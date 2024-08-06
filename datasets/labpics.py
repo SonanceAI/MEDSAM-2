@@ -92,12 +92,22 @@ class LabPicsDataModule(LightningDataModule):
         self.train_dataset = LabPicsDataset(self.data_dir, 'Train', transform=self.transform)
         self.val_dataset = LabPicsDataset(self.data_dir, 'Test', transform=self.transform)
 
+    @staticmethod
+    def _collate_fn(batch):
+        images, masks, points, labels = zip(*batch)
+        images = torch.stack(images)
+        return images, masks, points, labels
+
     def train_dataloader(self):
         return DataLoader(self.train_dataset,
                           batch_size=self.batch_size,
                           shuffle=True,
-                          num_workers=6
+                          num_workers=6,
+                          collate_fn=LabPicsDataModule._collate_fn
                           )
 
     def val_dataloader(self):
-        return DataLoader(self.val_dataset, batch_size=self.batch_size)
+        return DataLoader(self.val_dataset,
+                          batch_size=self.batch_size,
+                          num_workers=6,
+                          collate_fn=LabPicsDataModule._collate_fn)
