@@ -5,6 +5,7 @@ from torchvision import transforms as T
 import torch
 import cv2
 import numpy as np
+from typing import Any
 
 
 class LabPicsDataset(Dataset):
@@ -35,7 +36,7 @@ class LabPicsDataset(Dataset):
         return cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
     # read random image and its annotaion from  the dataset (LabPics)
-    def _read_single_image(self, ent: dict) -> tuple:
+    def _read_single_image(self, ent: dict) -> dict[str, Any]:
         #  select image
         img = self._read_image(ent["image"])
         ann_map = self._read_image(ent["annotation"])
@@ -71,14 +72,29 @@ class LabPicsDataset(Dataset):
         else:
             masks = torch.stack(masks)
             points = torch.tensor(points)
-        return img, masks, points, torch.ones((len(masks), 1))
+
+        # masks.shape: (N, H, W)
+        return {
+            'image': img,
+            'masks': masks,
+            'points_coords': points,
+            'points_labels': torch.ones((len(points), 1))
+        }
 
     def __len__(self):
         return len(self.data)
 
-    def __getitem__(self, idx) -> tuple:
-        img, masks, points, labels = self._read_single_image(self.data[idx])
-        return img, masks, points, labels
+    def __getitem__(self, idx) -> dict[str, Any]:
+        return self._read_single_image(self.data[idx])
+
+
+def collate_dict_SAM(batch: list[dict[str, Any]]) -> dict:
+    out_dict = {'image': torch.stack([item['image'] for item in batch])}
+    for key in ('masks', 'points_coords', 'points_labels', 'boxes'):
+        if key in batch[0]:
+            out_dict[key] = [item[key] for item in batch]
+
+    return out_dict
 
 
 class LabPicsDataModule(LightningDataModule):
@@ -92,22 +108,16 @@ class LabPicsDataModule(LightningDataModule):
         self.train_dataset = LabPicsDataset(self.data_dir, 'Train', transform=self.transform)
         self.val_dataset = LabPicsDataset(self.data_dir, 'Test', transform=self.transform)
 
-    @staticmethod
-    def _collate_fn(batch):
-        images, masks, points, labels = zip(*batch)
-        images = torch.stack(images)
-        return images, masks, points, labels
-
     def train_dataloader(self):
         return DataLoader(self.train_dataset,
                           batch_size=self.batch_size,
                           shuffle=True,
                           num_workers=6,
-                          collate_fn=LabPicsDataModule._collate_fn
+                          collate_fn=collate_dict_SAM
                           )
 
     def val_dataloader(self):
         return DataLoader(self.val_dataset,
                           batch_size=self.batch_size,
                           num_workers=6,
-                          collate_fn=LabPicsDataModule._collate_fn)
+                          collate_fn=collate_dict_SAM)

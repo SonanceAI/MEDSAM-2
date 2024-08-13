@@ -76,14 +76,19 @@ class SAM2Model(LightningModule):
                                                                                     high_res_features=high_res_features)
             # Upscale the masks to the original image resolution
             prd_masks = self.predictor._transforms.postprocess_masks(low_res_masks, self.predictor._orig_hw[img_idx])
+            # low_res_masks.shape: (N_i, 3, 256, 256). prd_scores.shape: (N_i, 3). prd_masks.shape: (N_i, H, W)
 
             loss, iou = self.compute_losses(mask, prd_masks, prd_scores)
             losses.append(loss)
             ious.append(iou)
         return torch.stack(losses).mean(), torch.stack(ious).mean()  # check what is the best, 'mean' or 'sum'.
 
-    def training_step(self, batch, batch_idx):
-        image, mask, input_point, input_label = batch
+    def training_step(self, batch: dict, batch_idx):
+        image = batch['image']
+        mask = batch['masks']
+        input_point = batch['points_coords']
+        input_label = batch['points_labels']
+
         batch_size = len(image)
         # image.shape: (B, C, H, W)
         loss, iou = self._forward_step(image, mask, input_point, input_label)
@@ -91,8 +96,12 @@ class SAM2Model(LightningModule):
         self.log('train/iou', iou, on_epoch=True, on_step=False, batch_size=batch_size)
         return loss
 
-    def validation_step(self, batch, batch_idx):
-        image, mask, input_point, input_label = batch
+    def validation_step(self, batch: dict, batch_idx):
+        image = batch['image']
+        mask = batch['masks']
+        input_point = batch['points_coords']
+        input_label = batch['points_labels']
+
         batch_size = len(image)
         # image.shape: (B, C, H, W)
         loss, iou = self._forward_step(image, mask, input_point, input_label)
@@ -143,4 +152,3 @@ if __name__ == "__main__":
                       callbacks=[checkpoint_callback, RichModelSummary()],
                       )
     trainer.fit(model, data_module)
-s
