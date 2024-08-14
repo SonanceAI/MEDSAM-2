@@ -24,6 +24,32 @@ def generate_random_points(masks: torch.Tensor) -> tuple[torch.Tensor, torch.Ten
     return points, torch.ones((len(points), 1))
 
 
+def generate_box(masks: torch.Tensor) -> torch.Tensor:
+    if len(masks) == 0:
+        return torch.zeros(size=(0,))
+    else:
+        boxes = []
+        for mask in masks:
+            coords = torch.argwhere(mask > 0)
+            if len(coords) == 0:
+                print(mask.sum())
+                continue
+            y1, x1 = coords.min(0)[0]
+            y2, x2 = coords.max(0)[0]
+            boxes.append([x1, y1, x2, y2])
+        return torch.tensor(boxes)
+
+
+def split_masks(masks: torch.Tensor) -> torch.Tensor:
+    """
+    For each unique value in the mask, create a new mask.
+    From (H,W) to (N, H, W).
+    """
+    unique_vals = torch.unique(masks)
+    unique_vals = unique_vals[unique_vals > 0]
+    return torch.stack([masks == val for val in unique_vals]).to(dtype=torch.uint8)
+
+
 def collate_dict_SAM(batch: list[dict[str, Any]]) -> dict:
     out_dict = {'image': torch.stack([item['image'] for item in batch])}
     for key in ('masks', 'points_coords', 'points_labels', 'boxes'):
@@ -54,10 +80,16 @@ class SAMDataset(Dataset):
             masks = self.mask_transform(masks)
             masks = masks[masks.sum((1, 2)) > 0]
 
+        img = data['image']
+        if img.max() > 1:
+            img = img / 255
+
+        boxes = None
         points_coords, points_labels = generate_random_points(masks)
         data['points_coords'] = points_coords
         data['points_labels'] = points_labels
+        data['boxes'] = boxes
         data['masks'] = masks
-        data['image'] = self.image_transform(data['image'])
+        data['image'] = self.image_transform(img)
 
         return data

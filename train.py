@@ -7,7 +7,16 @@ from lightning import LightningModule, Trainer
 import torch
 from sam2.build_sam import build_sam2
 from sam2_modified import SAM2ImagePredictorTensor
-from datasets.labpics import LabPicsDataModule
+from datasets.labpics import LabPicsDataModule, LabPicsDataset
+from torch.utils.data import DataLoader
+from datasets.sam_dataset import SAMDataset, collate_dict_SAM
+from datasets import CAMUS, USForKidney
+import os
+from torch.utils.data import ConcatDataset
+import logging
+import logging.config
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class SAM2Model(LightningModule):
@@ -31,6 +40,7 @@ class SAM2Model(LightningModule):
     def _forward_step(self,
                       images: torch.Tensor,
                       masks,
+                      boxes,
                       input_points,
                       input_labels) -> tuple[torch.Tensor, torch.Tensor]:
         """
@@ -44,20 +54,22 @@ class SAM2Model(LightningModule):
         losses = []
         ious = []
         for img_idx in range(len(images)):
-            in_point = input_points[img_idx]
-            in_label = input_labels[img_idx]
+            in_point = input_points[img_idx] if input_points is not None else None
+            in_label = input_labels[img_idx] if input_labels is not None else None
+            in_box = boxes[img_idx] if boxes is not None else None
             mask = masks[img_idx]
             if mask.shape[0] == 0:
                 continue
-            _, unnorm_coords, labels, _ = self.predictor._prep_prompts(in_point,
-                                                                       in_label,
-                                                                       box=None,
-                                                                       mask_logits=None,
-                                                                       normalize_coords=True,
-                                                                       img_idx=img_idx)
+            _, unnorm_coords, labels, unnorm_box = self.predictor._prep_prompts(in_point,
+                                                                                in_label,
+                                                                                box=in_box,
+                                                                                mask_logits=None,
+                                                                                normalize_coords=True,
+                                                                                img_idx=img_idx)
+            prep_points = (unnorm_coords, labels) if in_point is not None else None
             sparse_embeddings, dense_embeddings = self.predictor.model.sam_prompt_encoder(
-                points=(unnorm_coords, labels),
-                boxes=None,
+                points=prep_points,
+                boxes=unnorm_box,
                 masks=None,
             )
 
@@ -86,12 +98,17 @@ class SAM2Model(LightningModule):
     def training_step(self, batch: dict, batch_idx):
         image = batch['image']
         mask = batch['masks']
-        input_point = batch['points_coords']
-        input_label = batch['points_labels']
+        input_point = batch.get('points_coords', None)
+        input_label = batch.get('points_labels', None)
+        boxes = batch.get('boxes', None)
 
         batch_size = len(image)
         # image.shape: (B, C, H, W)
-        loss, iou = self._forward_step(image, mask, input_point, input_label)
+        loss, iou = self._forward_step(image,
+                                       masks=mask,
+                                       boxes=boxes,
+                                       input_points=input_point,
+                                       input_labels=input_label)
         self.log('train/loss', loss, prog_bar=True, on_epoch=True, batch_size=batch_size)
         self.log('train/iou', iou, on_epoch=True, on_step=False, batch_size=batch_size)
         return loss
@@ -101,10 +118,15 @@ class SAM2Model(LightningModule):
         mask = batch['masks']
         input_point = batch['points_coords']
         input_label = batch['points_labels']
+        boxes = batch['boxes']
 
         batch_size = len(image)
         # image.shape: (B, C, H, W)
-        loss, iou = self._forward_step(image, mask, input_point, input_label)
+        loss, iou = self._forward_step(image,
+                                       masks=mask,
+                                       boxes=boxes,
+                                       input_points=input_point,
+                                       input_labels=input_label)
         self.log('val/loss', loss, prog_bar=True, batch_size=batch_size)
         self.log('val/iou', iou, prog_bar=True, on_epoch=True, on_step=False, batch_size=batch_size)
 
@@ -132,23 +154,77 @@ class SAM2Model(LightningModule):
         return loss, iou.mean()
 
 
-# Main script
-if __name__ == "__main__":
+def load_datasets(root_dir: str, transforms) -> tuple[list, list]:
+    train_dataset_list = []
+    val_dataset_list = []
+
+    ### CAMUS ###
+    camus_dir = os.path.join(root_dir, 'CAMUS')
+    train_dataset_list.append(SAMDataset(CAMUS(camus_dir, 'train'),
+                                         image_transform=transforms)
+                              )
+    val_dataset_list.append(SAMDataset(CAMUS(camus_dir, 'test'),
+                                       image_transform=transforms)
+                            )
+
+    ### ct2usforkidneyseg ###
+    usforkidney_dir = os.path.join(root_dir, 'ct2usforkidneyseg')
+    train_dataset_list.append(SAMDataset(USForKidney(usforkidney_dir, 'train'),
+                                         image_transform=transforms)
+                              )
+    val_dataset_list.append(SAMDataset(USForKidney(usforkidney_dir, 'test'),
+                                       image_transform=transforms)
+                            )
+
+    return train_dataset_list, val_dataset_list
+
+
+def main():
     torch.set_float32_matmul_precision('high')
-    data_dir = "data/LabPicsV1/"
-    batch_size = 8
+    root_dir = "data/raw"
+    batch_size = 4
 
     model = SAM2Model()
-    data_module = LabPicsDataModule(data_dir, batch_size,
-                                    transform=model.predictor._transforms)
+    train_dataset_list, val_dataset_list = load_datasets(root_dir, model.predictor._transforms)
+    train_dataset = ConcatDataset(train_dataset_list)
+    val_dataset = ConcatDataset(val_dataset_list)
+
+    _LOGGER.info(f"Train dataset size: {len(train_dataset)}")
+    _LOGGER.info(f"Validation dataset size: {len(val_dataset)}")
+
+    train_dataloader = DataLoader(train_dataset,
+                                  batch_size=batch_size,
+                                  shuffle=True,
+                                  num_workers=6,
+                                  collate_fn=collate_dict_SAM)
+
+    val_dataloader = DataLoader(val_dataset,
+                                batch_size=batch_size,
+                                num_workers=6,
+                                collate_fn=collate_dict_SAM)
 
     checkpoint_callback = ModelCheckpoint(monitor='val/iou',
                                           filename='sam2-{epoch:02d}-{val/loss:.2f}',
                                           dirpath='checkpoints',
-                                          mode='min')
+                                          mode='max')
 
-    trainer = Trainer(max_epochs=3,
+    trainer = Trainer(max_epochs=10,
                       precision="bf16-mixed",
                       callbacks=[checkpoint_callback, RichModelSummary()],
                       )
-    trainer.fit(model, data_module)
+    trainer.validate(model, val_dataloader)
+    trainer.fit(model,
+                train_dataloaders=train_dataloader,
+                val_dataloaders=val_dataloader
+                )
+
+
+# Main script
+if __name__ == "__main__":
+    from rich.logging import RichHandler
+
+    logging.basicConfig(handlers=[RichHandler(rich_tracebacks=True)],
+                        format="%(message)s")
+    logging.getLogger(__name__).setLevel(logging.INFO)
+
+    main()
