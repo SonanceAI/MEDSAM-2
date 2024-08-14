@@ -16,7 +16,7 @@ class LabPicsDataset(Dataset):
         self.data = self._scan_data(data_dir, folder_name)
         self.mask_transform = T.Compose([
             T.ToTensor(),
-            T.Resize((1024, 1024), interpolation=T.InterpolationMode.NEAREST, antialias=False)
+            # T.Resize((1024, 1024), interpolation=T.InterpolationMode.NEAREST, antialias=False)
         ])
 
         if transform is None:
