@@ -71,6 +71,7 @@ class CAMUS(Dataset):
 
         # for each unique value in the mask, create a new mask
         gt_frame = split_masks(gt_frame)
+        
 
         return {'image': img,
                 'masks': gt_frame}
