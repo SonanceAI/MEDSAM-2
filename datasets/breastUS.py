@@ -23,7 +23,7 @@ class BreastUS(Dataset):
         for dir in ('malignant', 'benign'):
             self.mask_names += [f'{dir}/{fname}' for fname in os.listdir(f'{root_dir}/Dataset_BUSI_with_GT/{dir}')
                                 if fname.endswith('_mask.png')]
-
+            
         # sort the patients directories
         self.image_names.sort()
         idx_split = len(self.image_names) * 4 // 5

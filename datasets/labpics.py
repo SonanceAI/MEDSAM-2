@@ -78,7 +78,8 @@ class LabPicsDataset(Dataset):
             'image': img,
             'masks': masks,
             'points_coords': points,
-            'points_labels': torch.ones((len(points), 1))
+            'points_labels': torch.ones((len(points), 1)),
+            'image_name': ent["image"]
         }
 
     def __len__(self):

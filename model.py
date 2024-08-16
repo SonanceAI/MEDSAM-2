@@ -31,8 +31,8 @@ class SAM2Model(LightningModule):
         """
         images.shape: (B, C, H, W)
         masks.shape: (B, N_i, H, W)
-        input_points.shape: (B, N_i, 1, 2)
-        input_labels.shape: (B, N_i, 1)
+        input_points.shape: (B, 1, N_i, 2)
+        input_labels.shape: (B, 1, N_i)
         """
 
         self.predictor.set_image_batch(images)
@@ -41,6 +41,7 @@ class SAM2Model(LightningModule):
         for img_idx in range(len(images)):
             in_point = input_points[img_idx] if input_points is not None else None
             in_label = input_labels[img_idx] if input_labels is not None else None
+
             in_box = boxes[img_idx] if boxes is not None else None
             mask = masks[img_idx]
             if mask.shape[0] == 0:

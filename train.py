@@ -31,22 +31,22 @@ def load_datasets(root_dir: str, transforms) -> tuple[list, list]:
                             )
 
     ### ct2usforkidneyseg ###
-    # usforkidney_dir = os.path.join(root_dir, 'ct2usforkidneyseg')
-    # train_dataset_list.append(SAMDataset(USForKidney(usforkidney_dir, 'train'),
-    #                                      image_transform=transforms)
-    #                           )
-    # val_dataset_list.append(SAMDataset(USForKidney(usforkidney_dir, 'test'),
-    #                                    image_transform=transforms)
-    #                         )
+    usforkidney_dir = os.path.join(root_dir, 'ct2usforkidneyseg')
+    train_dataset_list.append(SAMDataset(USForKidney(usforkidney_dir, 'train'),
+                                         image_transform=transforms)
+                              )
+    val_dataset_list.append(SAMDataset(USForKidney(usforkidney_dir, 'test'),
+                                       image_transform=transforms)
+                            )
 
     ### BreastUS ###
-    # breastus_dir = os.path.join(root_dir, 'breast-ultrasound-images-dataset')
-    # train_dataset_list.append(SAMDataset(BreastUS(breastus_dir, 'train'),
-    #                                      image_transform=transforms)
-    #                           )
-    # val_dataset_list.append(SAMDataset(BreastUS(breastus_dir, 'test'),
-    #                                    image_transform=transforms)
-    #                         )
+    breastus_dir = os.path.join(root_dir, 'breast-ultrasound-images-dataset')
+    train_dataset_list.append(SAMDataset(BreastUS(breastus_dir, 'train'),
+                                         image_transform=transforms)
+                              )
+    val_dataset_list.append(SAMDataset(BreastUS(breastus_dir, 'test'),
+                                       image_transform=transforms)
+                            )
 
     ### LabPics ###
     # labpics_dir = os.path.join('data', 'LabPicsV1')
@@ -63,9 +63,10 @@ def load_datasets(root_dir: str, transforms) -> tuple[list, list]:
 def main():
     torch.set_float32_matmul_precision('high')
     root_dir = "data/raw"
-    batch_size = 8
+    batch_size = 16
 
-    model = SAM2Model()
+    model = SAM2Model(checkpoint_path="sam2-checkpoints/sam2_hiera_large.pt",
+                      model_cfg="sam2_hiera_l.yaml",)
     train_dataset_list, val_dataset_list = load_datasets(root_dir, model.predictor._transforms)
     train_dataset = ConcatDataset(train_dataset_list)
     val_dataset = ConcatDataset(val_dataset_list)
@@ -77,11 +78,16 @@ def main():
                                   batch_size=batch_size,
                                   shuffle=True,
                                   num_workers=8,
+                                  pin_memory=True,
+                                  persistent_workers=True,
                                   collate_fn=collate_dict_SAM)
 
     val_dataloader = DataLoader(val_dataset,
                                 batch_size=batch_size,
                                 num_workers=8,
+                                shuffle=False,
+                                pin_memory=True,
+                                persistent_workers=True,
                                 collate_fn=collate_dict_SAM)
 
     checkpoint_callback = ModelCheckpoint(monitor='val/iou',
@@ -89,16 +95,16 @@ def main():
                                           dirpath='checkpoints',
                                           mode='max')
 
-    trainer = Trainer(max_epochs=10,
+    trainer = Trainer(max_epochs=100,
                       accelerator='cuda',
                       precision="bf16-mixed",
                       callbacks=[checkpoint_callback, RichModelSummary()],
                       )
     trainer.validate(model, val_dataloader)
-    # trainer.fit(model,
-    #             train_dataloaders=train_dataloader,
-    #             val_dataloaders=val_dataloader
-    #             )
+    trainer.fit(model,
+                train_dataloaders=train_dataloader,
+                val_dataloaders=val_dataloader
+                )
 
 
 # Main script

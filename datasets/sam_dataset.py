@@ -6,7 +6,8 @@ from torchvision import transforms as T
 from sam2_modified import SAM2TransformsTensor
 
 
-def generate_random_points(masks: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+def generate_random_points(masks: torch.Tensor,
+                           num_points: int = 1) -> tuple[torch.Tensor, torch.Tensor]:
     if len(masks) == 0:
         masks = torch.zeros(size=(0,))
         points = torch.zeros(size=(0,))
@@ -16,11 +17,14 @@ def generate_random_points(masks: torch.Tensor) -> tuple[torch.Tensor, torch.Ten
             coords = torch.argwhere(mask > 0)
             if len(coords) == 0:
                 continue
-            yx = coords[np.random.randint(len(coords))]
-            points.append([[yx[1], yx[0]]])
+            ps = []
+            for i in range(num_points):
+                yx = coords[np.random.randint(len(coords))]
+                ps.append([yx[1], yx[0]])
+            points.append(ps)
         points = torch.tensor(points)
 
-    return points, torch.ones((len(points), 1))
+    return points, torch.ones((len(points), len(points[0])))
 
 
 def generate_box(masks: torch.Tensor) -> torch.Tensor:
@@ -65,8 +69,8 @@ class SAMDataset(Dataset):
         self.mask_transform = T.Resize((1024, 1024),
                                        interpolation=T.InterpolationMode.NEAREST,
                                        antialias=False)
-        assert isinstance(image_transform, SAM2TransformsTensor)
-        self.image_transform = image_transform
+        # assert isinstance(image_transform, SAM2TransformsTensor)
+        # self.image_transform = image_transform
 
     def __len__(self) -> int:
         return len(self.dataset)
@@ -79,23 +83,23 @@ class SAMDataset(Dataset):
             masks = masks[masks.sum((1, 2)) > 0]
 
         img = data['image']
-        if img.max() > 1 or img.min() < 0:
-            # min-max normalization
-            if torch.is_tensor(img):
-                img = img.to(dtype=torch.float32)
-            else:
-                img = img.astype(np.float32)
-            img = (img - img.min()) / (img.max() - img.min()+1e-6)
 
-
-        assert masks.max() <= 1
+        # min-max normalization
+        if torch.is_tensor(img):
+            img = img.to(dtype=torch.float32)
+            img = (img - img.min()) / (img.max() - img.min())
+        else:
+            img = img.astype(np.float32)
+            img = (img - img.min()) / (img.max() - img.min())
 
         boxes = None
-        points_coords, points_labels = generate_random_points(masks)
+        points_coords, points_labels = generate_random_points(masks,
+                                                              num_points=np.random.randint(1, 4) # 1 to 3 points
+                                                              )
         data['points_coords'] = points_coords
         data['points_labels'] = points_labels
         data['boxes'] = boxes
         data['masks'] = masks
-        data['image'] = self.image_transform(img)
+        data['image'] = self.mask_transform(img)
 
         return data
