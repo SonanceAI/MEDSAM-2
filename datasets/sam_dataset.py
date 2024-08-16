@@ -15,7 +15,6 @@ def generate_random_points(masks: torch.Tensor) -> tuple[torch.Tensor, torch.Ten
         for mask in masks:
             coords = torch.argwhere(mask > 0)
             if len(coords) == 0:
-                print(mask.sum())
                 continue
             yx = coords[np.random.randint(len(coords))]
             points.append([[yx[1], yx[0]]])
@@ -32,7 +31,6 @@ def generate_box(masks: torch.Tensor) -> torch.Tensor:
         for mask in masks:
             coords = torch.argwhere(mask > 0)
             if len(coords) == 0:
-                print(mask.sum())
                 continue
             y1, x1 = coords.min(0)[0]
             y2, x2 = coords.max(0)[0]
@@ -81,8 +79,16 @@ class SAMDataset(Dataset):
             masks = masks[masks.sum((1, 2)) > 0]
 
         img = data['image']
-        if img.max() > 1:
-            img = img / 255
+        if img.max() > 1 or img.min() < 0:
+            # min-max normalization
+            if torch.is_tensor(img):
+                img = img.to(dtype=torch.float32)
+            else:
+                img = img.astype(np.float32)
+            img = (img - img.min()) / (img.max() - img.min()+1e-6)
+
+
+        assert masks.max() <= 1
 
         boxes = None
         points_coords, points_labels = generate_random_points(masks)
