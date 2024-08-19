@@ -24,6 +24,9 @@ def generate_random_points(masks: torch.Tensor,
             points.append(ps)
         points = torch.tensor(points)
 
+    if len(points) == 0:
+        return points, torch.zeros((0,))
+
     return points, torch.ones((len(points), len(points[0])))
 
 
@@ -42,14 +45,27 @@ def generate_box(masks: torch.Tensor) -> torch.Tensor:
         return torch.tensor(boxes)
 
 
-def split_masks(masks: torch.Tensor) -> torch.Tensor:
+def split_masks(masks: torch.Tensor,
+                black_color: int = 0) -> torch.Tensor:
     """
     For each unique value in the mask, create a new mask.
-    From (H,W) to (N, H, W).
+    From (H,W) or (H,W,3) to (N, H, W).
     """
-    unique_vals = torch.unique(masks)
-    unique_vals = unique_vals[unique_vals > 0]
-    return torch.stack([masks == val for val in unique_vals]).to(dtype=torch.uint8)
+
+    if masks.ndim == 3:
+        assert masks.shape[2] == 3
+        # compute all unique colors
+        unique_vals = torch.unique(masks.reshape(-1, 3), dim=0)
+        # discard black color
+        unique_vals = unique_vals[unique_vals.sum(dim=1) > black_color]
+        if len(unique_vals) == 0:
+            return torch.zeros(size=(0,))
+        return torch.stack([torch.all(masks == val, dim=-1) for val in unique_vals]).to(dtype=torch.uint8)
+    else:
+        unique_vals = torch.unique(masks)
+        # discard black color
+        unique_vals = unique_vals[unique_vals > black_color]
+        return torch.stack([masks == val for val in unique_vals]).to(dtype=torch.uint8)
 
 
 def collate_dict_SAM(batch: list[dict[str, Any]]) -> dict:
@@ -64,7 +80,7 @@ def collate_dict_SAM(batch: list[dict[str, Any]]) -> dict:
 class SAMDataset(Dataset):
     def __init__(self,
                  dataset: Dataset,
-                 image_transform: SAM2TransformsTensor) -> None:
+                 image_transform: SAM2TransformsTensor = None) -> None:
         self.dataset = dataset
         self.mask_transform = T.Resize((1024, 1024),
                                        interpolation=T.InterpolationMode.NEAREST,
@@ -94,7 +110,7 @@ class SAMDataset(Dataset):
 
         boxes = None
         points_coords, points_labels = generate_random_points(masks,
-                                                              num_points=np.random.randint(1, 4) # 1 to 3 points
+                                                              num_points=np.random.randint(1, 4)  # 1 to 3 points
                                                               )
         data['points_coords'] = points_coords
         data['points_labels'] = points_labels
