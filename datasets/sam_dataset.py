@@ -4,6 +4,9 @@ from typing import Any
 import numpy as np
 from torchvision import transforms as T
 from sam2_modified import SAM2TransformsTensor
+import logging
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def generate_random_points(masks: torch.Tensor,
@@ -65,6 +68,8 @@ def split_masks(masks: torch.Tensor,
         unique_vals = torch.unique(masks)
         # discard black color
         unique_vals = unique_vals[unique_vals > black_color]
+        if len(unique_vals) == 0:
+            return torch.zeros(size=(0,))
         return torch.stack([masks == val for val in unique_vals]).to(dtype=torch.uint8)
 
 
@@ -97,6 +102,9 @@ class SAMDataset(Dataset):
         if masks.shape[0] != 0:
             masks = self.mask_transform(masks)
             masks = masks[masks.sum((1, 2)) > 0]
+
+        if len(masks) > 80:
+            _LOGGER.warning(f"Too many masks: {len(masks)}! Check the dataset.")
 
         img = data['image']
 

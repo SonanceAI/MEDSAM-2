@@ -7,7 +7,7 @@ from lightning import Trainer
 import torch
 from torch.utils.data import DataLoader
 from datasets.sam_dataset import SAMDataset, collate_dict_SAM
-from datasets import CAMUS, USForKidney, BreastUS, labpics
+from datasets import CAMUS, USForKidney, BreastUS, USsimandsegmDataset, USnervesegDataset, USThyroidDataset
 import os
 from torch.utils.data import ConcatDataset
 import logging
@@ -48,14 +48,32 @@ def load_datasets(root_dir: str, transforms) -> tuple[list, list]:
                                        image_transform=transforms)
                             )
 
-    ### LabPics ###
-    # labpics_dir = os.path.join('data', 'LabPicsV1')
-    # train_dataset_list.append(SAMDataset(labpics.LabPicsDataset(labpics_dir, 'Train'),
-    #                                      image_transform=transforms)
-    #                           )
-    # val_dataset_list.append(SAMDataset(labpics.LabPicsDataset(labpics_dir, 'Test'),
-    #                                    image_transform=transforms)
-    #                         )
+    ### USsimandsegm ###
+    ussimandsegm_dir = os.path.join(root_dir, 'ussimandsegm')
+    train_dataset_list.append(SAMDataset(USsimandsegmDataset(ussimandsegm_dir, 'train'),
+                                         image_transform=transforms)
+                              )
+    val_dataset_list.append(SAMDataset(USsimandsegmDataset(ussimandsegm_dir, 'test'),
+                                       image_transform=transforms)
+                            )
+
+    ### USnerveseg ###
+    usnerveseg_dir = os.path.join(root_dir, 'ultrasound-nerve-segmentation')
+    train_dataset_list.append(SAMDataset(USnervesegDataset(usnerveseg_dir),
+                                         image_transform=transforms)
+                              )
+    val_dataset_list.append(SAMDataset(USnervesegDataset(usnerveseg_dir),
+                                       image_transform=transforms)
+                            )
+
+    ### USThyroidDataset ###
+    usthyroid_dir = os.path.join(root_dir, 'Thyroid Dataset')
+    train_dataset_list.append(SAMDataset(USThyroidDataset(usthyroid_dir, 'train'),
+                                         image_transform=transforms)
+                              )
+    val_dataset_list.append(SAMDataset(USThyroidDataset(usthyroid_dir, 'test'),
+                                       image_transform=transforms)
+                            )
 
     return train_dataset_list, val_dataset_list
 
@@ -96,6 +114,7 @@ def main():
                                           mode='max')
 
     trainer = Trainer(max_epochs=100,
+                      num_sanity_val_steps=0,
                       accelerator='cuda',
                       precision="bf16-mixed",
                       callbacks=[checkpoint_callback, RichModelSummary()],
