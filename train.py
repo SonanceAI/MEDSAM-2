@@ -7,7 +7,7 @@ from lightning import Trainer
 import torch
 from torch.utils.data import DataLoader
 from datasets.sam_dataset import SAMDataset, collate_dict_SAM
-from datasets import CAMUS, USForKidney, BreastUS, USsimandsegmDataset, USnervesegDataset, USThyroidDataset
+from datasets import CAMUS, USForKidney, BreastUS, USsimandsegmDataset, USnervesegDataset, USThyroidDataset, FHPSAOPDataset
 import os
 from torch.utils.data import ConcatDataset
 import logging
@@ -75,16 +75,32 @@ def load_datasets(root_dir: str, transforms) -> tuple[list, list]:
                                        image_transform=transforms)
                             )
 
+    ### FHPSAOPDataset ###
+    # fhpsaop_dir = os.path.join(root_dir, 'FH-PS-AOP')
+    # train_dataset_list.append(SAMDataset(FHPSAOPDataset(fhpsaop_dir, 'train'),
+    #                                      image_transform=transforms)
+    #                           )
+    # val_dataset_list.append(SAMDataset(FHPSAOPDataset(fhpsaop_dir, 'test'),
+    #                                    image_transform=transforms)
+    #                         )
+
     return train_dataset_list, val_dataset_list
 
 
-def main():
-    torch.set_float32_matmul_precision('high')
-    root_dir = "data/raw"
-    batch_size = 8
+def main(args):
+    MODEL_CFGS = {
+        'small': ('sam2_hiera_s.yaml', 'sam2-checkpoints/sam2_hiera_small.pt'),
+        'large': ('sam2_hiera_l.yaml', 'sam2-checkpoints/sam2_hiera_large.pt'),
+    }
 
-    model = SAM2Model(checkpoint_path="sam2-checkpoints/sam2_hiera_small.pt",
-                      model_cfg="sam2_hiera_s.yaml")
+    torch.set_float32_matmul_precision('high')
+    root_dir = args.root_dir
+    batch_size = args.batch_size
+
+    model_cfg, checkpoint_path = MODEL_CFGS[args.model_arch]
+
+    model = SAM2Model(checkpoint_path=checkpoint_path,
+                      model_cfg=model_cfg)
     model.freeze_all(freeze_mask_decoder=False)
     train_dataset_list, val_dataset_list = load_datasets(root_dir, model.predictor._transforms)
     train_dataset = ConcatDataset(train_dataset_list)
@@ -96,14 +112,14 @@ def main():
     train_dataloader = DataLoader(train_dataset,
                                   batch_size=batch_size,
                                   shuffle=True,
-                                  num_workers=10,
+                                  num_workers=args.num_workers,
                                   pin_memory=True,
                                   persistent_workers=True,
                                   collate_fn=collate_dict_SAM)
 
     val_dataloader = DataLoader(val_dataset,
                                 batch_size=batch_size,
-                                num_workers=10,
+                                num_workers=args.num_workers,
                                 shuffle=False,
                                 pin_memory=True,
                                 persistent_workers=True,
@@ -114,7 +130,7 @@ def main():
                                           dirpath='checkpoints',
                                           mode='max')
 
-    trainer = Trainer(max_epochs=30,
+    trainer = Trainer(max_epochs=args.epochs,
                       num_sanity_val_steps=0,
                       accelerator='cuda',
                       precision="bf16-mixed",
@@ -130,9 +146,19 @@ def main():
 # Main script
 if __name__ == "__main__":
     from rich.logging import RichHandler
+    import argparse
+
+    argparse = argparse.ArgumentParser()
+    argparse.add_argument("--root_dir", type=str, default="data/raw")
+    argparse.add_argument("--batch_size", type=int, default=8)
+    argparse.add_argument("--epochs", type=int, default=30)
+    argparse.add_argument("--num_workers", type=int, default=8)
+    argparse.add_argument("--model_arch", type=str, default='small', choices=['small', 'large'])
+
+    args = argparse.parse_args()
 
     logging.basicConfig(handlers=[RichHandler(rich_tracebacks=True)],
                         format="%(message)s")
     logging.getLogger(__name__).setLevel(logging.INFO)
 
-    main()
+    main(args)
