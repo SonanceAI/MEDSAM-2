@@ -81,10 +81,11 @@ def load_datasets(root_dir: str, transforms) -> tuple[list, list]:
 def main():
     torch.set_float32_matmul_precision('high')
     root_dir = "data/raw"
-    batch_size = 16
+    batch_size = 8
 
-    model = SAM2Model(checkpoint_path="sam2-checkpoints/sam2_hiera_large.pt",
-                      model_cfg="sam2_hiera_l.yaml",)
+    model = SAM2Model(checkpoint_path="sam2-checkpoints/sam2_hiera_small.pt",
+                      model_cfg="sam2_hiera_s.yaml")
+    model.freeze_all(freeze_mask_decoder=False)
     train_dataset_list, val_dataset_list = load_datasets(root_dir, model.predictor._transforms)
     train_dataset = ConcatDataset(train_dataset_list)
     val_dataset = ConcatDataset(val_dataset_list)
@@ -95,14 +96,14 @@ def main():
     train_dataloader = DataLoader(train_dataset,
                                   batch_size=batch_size,
                                   shuffle=True,
-                                  num_workers=8,
+                                  num_workers=10,
                                   pin_memory=True,
                                   persistent_workers=True,
                                   collate_fn=collate_dict_SAM)
 
     val_dataloader = DataLoader(val_dataset,
                                 batch_size=batch_size,
-                                num_workers=8,
+                                num_workers=10,
                                 shuffle=False,
                                 pin_memory=True,
                                 persistent_workers=True,
@@ -113,7 +114,7 @@ def main():
                                           dirpath='checkpoints',
                                           mode='max')
 
-    trainer = Trainer(max_epochs=100,
+    trainer = Trainer(max_epochs=30,
                       num_sanity_val_steps=0,
                       accelerator='cuda',
                       precision="bf16-mixed",

@@ -12,12 +12,24 @@ class SAM2Model(LightningModule):
         super().__init__()
         sam2_checkpoint = checkpoint_path
         model_cfg = model_cfg
-        self.sam2_model = build_sam2(model_cfg, sam2_checkpoint, device=device)
-        self.predictor = SAM2ImagePredictorTensor(self.sam2_model)
-        # Set training parameters
+        sam2_model = build_sam2(model_cfg, sam2_checkpoint, device=device)
+        self.predictor = SAM2ImagePredictorTensor(sam2_model)
+        # register self.predictor.model as a submodule
+        self.add_module("sam2_model", self.predictor.model)
 
+        # Set training parameters
         self.predictor.model.sam_mask_decoder.train(True)
         self.predictor.model.sam_prompt_encoder.train(True)
+
+    def freeze_all(self, freeze_mask_decoder=True, freeze_prompt_encoder=True):
+        for _, param in self.predictor.model.named_parameters():
+            param.requires_grad = False
+        if not freeze_mask_decoder:
+            for _, param in self.predictor.model.sam_mask_decoder.named_parameters():
+                param.requires_grad = True
+        if not freeze_prompt_encoder:
+            for _, param in self.predictor.model.sam_prompt_encoder.named_parameters():
+                param.requires_grad = True
 
     def forward(self, x):
         return self.predictor.model.forward_image(x)
@@ -118,11 +130,11 @@ class SAM2Model(LightningModule):
 
     def configure_optimizers(self):
         optimizer = torch.optim.AdamW(params=self.predictor.model.parameters(),
-                                      lr=1e-5,
-                                      weight_decay=4e-5)
+                                      lr=1e-4,
+                                      weight_decay=1e-5)
         return optimizer
 
-    def compute_losses(self, mask, prd_masks, prd_scores) -> tuple[torch.Tensor, torch.Tensor]:
+    def compute_losses_old(self, mask, prd_masks, prd_scores) -> tuple[torch.Tensor, torch.Tensor]:
         # Segmentation Loss caclulation
 
         prd_scores, pred_max_idx = prd_scores.max(1)
@@ -135,6 +147,29 @@ class SAM2Model(LightningModule):
         prd_mask = torch.sigmoid(prd_masks)
         seg_loss = (-gt_mask * torch.log(prd_mask + 0.00001) - (1 - gt_mask)
                     * torch.log((1 - prd_mask) + 0.00001)).mean()
+
+        # Score loss calculation (intersection over union) IOU
+
+        inter = (gt_mask * (prd_mask > 0.5)).sum(1).sum(1)
+        iou = inter / (gt_mask.sum(1).sum(1) + (prd_mask > 0.5).sum(1).sum(1) - inter)
+        score_loss = torch.abs(prd_scores - iou).mean()
+        loss = seg_loss+score_loss*0.05  # mix losses
+
+        return loss, iou.mean()
+
+    def compute_losses(self, mask, prd_masks, prd_scores) -> tuple[torch.Tensor, torch.Tensor]:
+        # # Segmentation Loss caclulation
+
+        gt_mask = mask.to(dtype=torch.float32)
+        prd_mask = torch.sigmoid(prd_masks)
+        gt_mask_aug = gt_mask.unsqueeze(1).repeat(1, 3, 1, 1)
+        seg_loss_pointwise = (-gt_mask_aug * torch.log(prd_mask + 0.00001) - (1 - gt_mask_aug)
+                              * torch.log((1 - prd_mask) + 0.00001))
+
+        seg_loss, min_idx = seg_loss_pointwise.mean((0, 2, 3)).min(0)
+
+        prd_mask = prd_mask[:, min_idx]
+        prd_scores = prd_scores[:, min_idx]
 
         # Score loss calculation (intersection over union) IOU
 
