@@ -5,3 +5,4 @@ from .breastUS import BreastUS
 from .ussimandsegm import USsimandsegmDataset
 from .usnerveseg import USnervesegDataset
 from .usthyroid import USThyroidDataset
+from .fhpsaop import FHPSAOPDataset
