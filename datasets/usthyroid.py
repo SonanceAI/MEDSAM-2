@@ -58,7 +58,9 @@ class USThyroidDataset(Dataset):
         # convert to tensors
         img = torch.tensor(img, dtype=torch.float32).permute(2, 0, 1)
         gt_frame = torch.tensor(gt_frame, dtype=torch.uint8)
-        gt_frame = (gt_frame >= 127).to(dtype=torch.uint8)
+
+        # threshold the mask by 200 to remove weird letters burned into the masks
+        gt_frame = (gt_frame >= 200).to(dtype=torch.uint8)
 
         # for each unique value in the mask, create a new mask
         gt_frame = split_masks(gt_frame)
