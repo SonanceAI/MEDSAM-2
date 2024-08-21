@@ -76,13 +76,15 @@ def load_datasets(root_dir: str, transforms) -> tuple[list, list]:
                             )
 
     ### FHPSAOPDataset ###
-    # fhpsaop_dir = os.path.join(root_dir, 'FH-PS-AOP')
-    # train_dataset_list.append(SAMDataset(FHPSAOPDataset(fhpsaop_dir, 'train'),
-    #                                      image_transform=transforms)
-    #                           )
-    # val_dataset_list.append(SAMDataset(FHPSAOPDataset(fhpsaop_dir, 'test'),
-    #                                    image_transform=transforms)
-    #                         )
+    train_dataset_list = []
+    val_dataset_list = []
+    fhpsaop_dir = os.path.join(root_dir, 'FH-PS-AOP')
+    train_dataset_list.append(SAMDataset(FHPSAOPDataset(fhpsaop_dir, 'train'),
+                                         image_transform=transforms)
+                              )
+    val_dataset_list.append(SAMDataset(FHPSAOPDataset(fhpsaop_dir, 'test'),
+                                       image_transform=transforms)
+                            )
 
     return train_dataset_list, val_dataset_list
 
