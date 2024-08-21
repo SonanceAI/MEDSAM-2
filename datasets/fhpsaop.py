@@ -15,9 +15,9 @@ class FHPSAOPDataset(Dataset):
         if split not in ['all', 'train', 'test']:
             raise ValueError(f"split must be one of ['all', 'train', 'test'], got {split}")
 
-        self.image_names = [fname for fname in os.listdir(f'{root_dir}/image_mha')
+        self.image_names = [fname for fname in os.listdir(f'{self.root_dir}/image_mha')
                             if fname.endswith('.mha')]
-        self.mask_names = [fname for fname in os.listdir(f'{root_dir}/label_mha')
+        self.mask_names = [fname for fname in os.listdir(f'{self.root_dir}/label_mha')
                            if fname.endswith('.mha')]
 
         assert len(self.image_names) == len(self.mask_names)
