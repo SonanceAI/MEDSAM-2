@@ -17,11 +17,10 @@ class SAM2Model(LightningModule):
         # register self.predictor.model as a submodule
         self.add_module("sam2_model", self.predictor.model)
 
-        # Set training parameters
-        self.predictor.model.sam_mask_decoder.train(True)
-        self.predictor.model.sam_prompt_encoder.train(True)
-
-    def freeze_all(self, freeze_mask_decoder=True, freeze_prompt_encoder=True):
+    def freeze_all(self,
+                   freeze_mask_decoder=True,
+                   freeze_prompt_encoder=True,
+                   freeze_adapter=False):
         for _, param in self.predictor.model.named_parameters():
             param.requires_grad = False
         if not freeze_mask_decoder:
@@ -30,6 +29,10 @@ class SAM2Model(LightningModule):
         if not freeze_prompt_encoder:
             for _, param in self.predictor.model.sam_prompt_encoder.named_parameters():
                 param.requires_grad = True
+        if not freeze_adapter:
+            for name, param in self.predictor.model.named_parameters():
+                if 'adapter' in name:
+                    param.requires_grad = True
 
     def forward(self, x):
         return self.predictor.model.forward_image(x)
@@ -46,7 +49,6 @@ class SAM2Model(LightningModule):
         input_points.shape: (B, 1, N_i, 2)
         input_labels.shape: (B, 1, N_i)
         """
-
         self.predictor.set_image_batch(images)
         losses = []
         ious = []
