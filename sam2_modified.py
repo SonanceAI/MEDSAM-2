@@ -28,7 +28,6 @@ class SAM2ImagePredictorTensor(SAM2ImagePredictor):
                                                 max_hole_area=max_hole_area,
                                                 max_sprinkle_area=max_sprinkle_area)
 
-    @torch.no_grad()
     def set_image(
         self,
         image: Union[np.ndarray, Image, torch.Tensor],
@@ -77,7 +76,6 @@ class SAM2ImagePredictorTensor(SAM2ImagePredictor):
         self._is_image_set = True
         logging.info("Image embeddings computed.")
 
-    @torch.no_grad()
     def set_image_batch(
         self,
         image_list: Sequence[Union[np.ndarray, torch.Tensor]],
