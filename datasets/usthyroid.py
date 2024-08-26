@@ -32,7 +32,7 @@ class USThyroidDataset(Dataset):
                        if fname.endswith('.jpg')]
         tg3k_masks = [f'tg3k/thyroid-mask/{fname}' for fname in os.listdir(f'{tg3k_dir}/thyroid-mask')
                       if fname.endswith('.jpg')]
-
+        
         if split == 'train':
             self.image_names = tn3k_train_images + tg3k_images
             self.mask_names = tn3k_train_masks + tg3k_masks
@@ -42,6 +42,12 @@ class USThyroidDataset(Dataset):
         else:
             self.image_names = tn3k_train_images + tn3k_test_images + tg3k_images
             self.mask_names = tn3k_train_masks + tn3k_test_masks + tg3k_masks
+
+        self.image_names.sort()
+        self.mask_names.sort()
+
+        assert len(self.image_names) == len(self.mask_names), \
+            f"Number of images and masks must be equal {len(self.image_names)} != {len(self.mask_names)}"
 
     def __len__(self) -> int:
         return len(self.image_names)

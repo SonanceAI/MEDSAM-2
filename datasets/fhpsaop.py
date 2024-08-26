@@ -33,7 +33,8 @@ class FHPSAOPDataset(Dataset):
             self.image_names = self.image_names[idx_split:]
             self.mask_names = self.mask_names[idx_split:]
 
-        
+        assert len(self.image_names) == len(self.mask_names), \
+            f"Number of images and masks must be equal {len(self.image_names)} != {len(self.mask_names)}"
 
     def __len__(self) -> int:
         return len(self.image_names)
