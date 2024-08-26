@@ -5,14 +5,19 @@
 from lightning.pytorch.callbacks import ModelCheckpoint, RichModelSummary
 from lightning import Trainer
 import torch
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, ConcatDataset
 from datasets.sam_dataset import SAMDataset, collate_dict_SAM
 from datasets import CAMUS, USForKidney, BreastUS, USsimandsegmDataset, USnervesegDataset, USThyroidDataset, FHPSAOPDataset
 import os
-from torch.utils.data import ConcatDataset
 import logging
 import logging.config
 from model import SAM2Model
+
+# For ensuring reproducibility
+# torch.manual_seed(12)
+# torch.backends.cudnn.deterministic = True
+# torch.backends.cudnn.benchmark = False
+
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -62,9 +67,6 @@ def load_datasets(root_dir: str, transforms) -> tuple[list, list]:
     train_dataset_list.append(SAMDataset(USnervesegDataset(usnerveseg_dir),
                                          image_transform=transforms)
                               )
-    val_dataset_list.append(SAMDataset(USnervesegDataset(usnerveseg_dir),
-                                       image_transform=transforms)
-                            )
 
     ### USThyroidDataset ###
     usthyroid_dir = os.path.join(root_dir, 'Thyroid Dataset')
@@ -76,8 +78,6 @@ def load_datasets(root_dir: str, transforms) -> tuple[list, list]:
                             )
 
     ### FHPSAOPDataset ###
-    train_dataset_list = []
-    val_dataset_list = []
     fhpsaop_dir = os.path.join(root_dir, 'FH-PS-AOP')
     train_dataset_list.append(SAMDataset(FHPSAOPDataset(fhpsaop_dir, 'train'),
                                          image_transform=transforms)
@@ -85,6 +85,58 @@ def load_datasets(root_dir: str, transforms) -> tuple[list, list]:
     val_dataset_list.append(SAMDataset(FHPSAOPDataset(fhpsaop_dir, 'test'),
                                        image_transform=transforms)
                             )
+
+    return train_dataset_list, val_dataset_list
+
+
+def load_datasets2(root_dir: str, transforms) -> tuple[list, list]:
+    """
+    Load datasets separating a single complete dataset to test.
+    """
+    train_dataset_list = []
+    val_dataset_list = []
+
+    ### CAMUS ###
+    camus_dir = os.path.join(root_dir, 'CAMUS')
+    train_dataset_list.append(SAMDataset(CAMUS(camus_dir, 'all'),
+                                         image_transform=transforms)
+                              )
+
+    ### ct2usforkidneyseg ###
+    usforkidney_dir = os.path.join(root_dir, 'ct2usforkidneyseg')
+    train_dataset_list.append(SAMDataset(USForKidney(usforkidney_dir, 'all'),
+                                         image_transform=transforms)
+                              )
+
+    ### BreastUS ###
+    breastus_dir = os.path.join(root_dir, 'breast-ultrasound-images-dataset')
+    train_dataset_list.append(SAMDataset(BreastUS(breastus_dir, 'all'),
+                                         image_transform=transforms)
+                              )
+
+    ### USsimandsegm ###
+    ussimandsegm_dir = os.path.join(root_dir, 'ussimandsegm')
+    train_dataset_list.append(SAMDataset(USsimandsegmDataset(ussimandsegm_dir, 'all'),
+                                         image_transform=transforms)
+                              )
+
+    ### USnerveseg ###
+    usnerveseg_dir = os.path.join(root_dir, 'ultrasound-nerve-segmentation')
+    train_dataset_list.append(SAMDataset(USnervesegDataset(usnerveseg_dir),
+                                         image_transform=transforms)
+                              )
+
+    ### USThyroidDataset ###
+    usthyroid_dir = os.path.join(root_dir, 'Thyroid Dataset')
+    val_dataset_list.append(SAMDataset(USThyroidDataset(usthyroid_dir, 'all'),
+                                       image_transform=transforms)
+                            )
+
+    ### FHPSAOPDataset ###
+    fhpsaop_dir = os.path.join(root_dir, 'FH-PS-AOP')
+    train_dataset_list.append(SAMDataset(FHPSAOPDataset(fhpsaop_dir, 'train'),
+                                         image_transform=transforms)
+                              )
 
     return train_dataset_list, val_dataset_list
 
@@ -103,8 +155,9 @@ def main(args):
 
     model = SAM2Model(checkpoint_path=checkpoint_path,
                       model_cfg=model_cfg)
-    model.freeze_all(freeze_mask_decoder=False)
-    train_dataset_list, val_dataset_list = load_datasets(root_dir, model.predictor._transforms)
+    model.freeze_all(freeze_mask_decoder=True,
+                     freeze_adapter=False)
+    train_dataset_list, val_dataset_list = load_datasets2(root_dir, model.predictor._transforms)
     train_dataset = ConcatDataset(train_dataset_list)
     val_dataset = ConcatDataset(val_dataset_list)
 
@@ -115,8 +168,7 @@ def main(args):
                                   batch_size=batch_size,
                                   shuffle=True,
                                   num_workers=args.num_workers,
-                                  pin_memory=True,
-                                  persistent_workers=True,
+                                  persistent_workers=args.num_workers != 0,
                                   collate_fn=collate_dict_SAM)
 
     val_dataloader = DataLoader(val_dataset,
@@ -124,7 +176,7 @@ def main(args):
                                 num_workers=args.num_workers,
                                 shuffle=False,
                                 pin_memory=True,
-                                persistent_workers=True,
+                                persistent_workers=args.num_workers != 0,
                                 collate_fn=collate_dict_SAM)
 
     checkpoint_callback = ModelCheckpoint(monitor='val/iou',
