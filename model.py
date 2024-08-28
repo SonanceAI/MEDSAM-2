@@ -2,14 +2,20 @@ from lightning import LightningModule
 from sam2_modified import SAM2ImagePredictorTensor
 from sam2.build_sam import build_sam2
 import torch
+import logging
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class SAM2Model(LightningModule):
     def __init__(self,
                  checkpoint_path: str = "sam2-checkpoints/sam2_hiera_small.pt",
                  model_cfg: str = "sam2_hiera_s.yaml",
-                 device: str = "cuda"):
+                 device: str = "cuda",
+                 learning_rate: float = 1e-5
+                 ):
         super().__init__()
+        self.learning_rate = learning_rate
         sam2_checkpoint = checkpoint_path
         model_cfg = model_cfg
         sam2_model = build_sam2(model_cfg, sam2_checkpoint, device=device)
@@ -50,15 +56,16 @@ class SAM2Model(LightningModule):
         input_labels.shape: (B, 1, N_i)
         """
         self.predictor.set_image_batch(images)
-        losses = []
-        ious = []
+        losses = 0.0
+        ious = 0.0
+        k = 0
         for img_idx in range(len(images)):
             in_point = input_points[img_idx] if input_points is not None else None
             in_label = input_labels[img_idx] if input_labels is not None else None
-
             in_box = boxes[img_idx] if boxes is not None else None
             mask = masks[img_idx]
             if mask.shape[0] == 0:
+                _LOGGER.warning(f"Skipping image {img_idx} as it has no masks")
                 continue
             mask_input, unnorm_coords, labels, unnorm_box = self.predictor._prep_prompts(in_point,
                                                                                          in_label,
@@ -66,7 +73,12 @@ class SAM2Model(LightningModule):
                                                                                          mask_logits=None,
                                                                                          normalize_coords=True,
                                                                                          img_idx=img_idx)
-            concat_points = (unnorm_coords, labels) if in_point is not None else None
+            if in_point is not None:
+                concat_points = (unnorm_coords, labels)
+                batched_mode = unnorm_coords.shape[0] > 1
+            else:
+                concat_points = None
+                batched_mode = False
             sparse_embeddings, dense_embeddings = self.predictor.model.sam_prompt_encoder(
                 points=concat_points,
                 boxes=None,
@@ -74,8 +86,6 @@ class SAM2Model(LightningModule):
             )
 
             # mask decoder
-
-            batched_mode = concat_points is not None and concat_points[0].shape[0] > 1  # multi object prediction
             high_res_features = [feat_level[img_idx].unsqueeze(0)
                                  for feat_level in self.predictor._features["high_res_feats"]]
             image_pe = self.predictor.model.sam_prompt_encoder.get_dense_pe()
@@ -91,9 +101,10 @@ class SAM2Model(LightningModule):
             # low_res_masks.shape: (N_i, 3, 256, 256). prd_scores.shape: (N_i, 3). prd_masks.shape: (N_i, H, W)
 
             loss, iou = self.compute_losses(mask, prd_masks, prd_scores)
-            losses.append(loss)
-            ious.append(iou)
-        return torch.stack(losses).mean(), torch.stack(ious).mean()  # check what is the best, 'mean' or 'sum'.
+            losses += loss
+            ious += iou
+            k += 1
+        return losses/k, ious/k
 
     def training_step(self, batch: dict, batch_idx):
         image = batch['image']
@@ -127,13 +138,19 @@ class SAM2Model(LightningModule):
                                        boxes=boxes,
                                        input_points=input_point,
                                        input_labels=input_label)
-        self.log('val/loss', loss, prog_bar=True, batch_size=batch_size)
+        self.log('val/loss', loss, prog_bar=True, on_epoch=True, batch_size=batch_size)
         self.log('val/iou', iou, prog_bar=True, on_epoch=True, on_step=False, batch_size=batch_size)
 
     def configure_optimizers(self):
-        optimizer = torch.optim.AdamW(params=self.predictor.model.parameters(),
-                                      lr=1e-4,
-                                      weight_decay=1e-5)
+        adapter_params = [param for name, param in self.predictor.model.named_parameters() if 'adapter' in name]
+
+        params_to_optim = [
+            # {'params': self.predictor.model.sam_mask_decoder.parameters(), 'lr': self.learning_rate/10, 'weight_decay': 0},
+            {'params': adapter_params, 'lr': self.learning_rate, 'weight_decay': 1e-5}
+        ]
+        optimizer = torch.optim.AdamW(params_to_optim,
+                                      lr=self.learning_rate/10,
+                                      weight_decay=0)
         return optimizer
 
     def compute_losses_old(self, mask, prd_masks, prd_scores) -> tuple[torch.Tensor, torch.Tensor]:
