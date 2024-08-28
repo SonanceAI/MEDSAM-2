@@ -53,6 +53,7 @@ class BreastUS(Dataset):
         maskname = self.mask_names[index]
         gt_frame = cv2.imread(f'{self.root_dir}/Dataset_BUSI_with_GT/{maskname}', cv2.IMREAD_GRAYSCALE)
 
+        # (H, W, C) -> (C, H, W)
         img = torch.tensor(img, dtype=torch.float32).permute(2, 0, 1)
         gt_frame = torch.tensor(gt_frame, dtype=torch.uint8)
         gt_frame = (gt_frame > 127).to(dtype=torch.uint8)

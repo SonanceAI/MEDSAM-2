@@ -3,6 +3,7 @@ from torch.utils.data import Dataset
 import os
 import cv2
 from .sam_dataset import split_masks
+import numpy as np
 
 
 class USsimandsegmDataset(Dataset):
@@ -28,6 +29,21 @@ class USsimandsegmDataset(Dataset):
             self.image_names = test_image_names
         else:
             self.image_names = train_image_names + test_image_names
+
+        self._remove_zero_masks()
+        assert len(self.image_names) > 0
+
+    def _remove_zero_masks(self):
+        zero_masks = []
+        for imgname in self.image_names:
+            mask = cv2.imread(os.path.join(self.masks_dir, imgname),
+                              cv2.IMREAD_GRAYSCALE)
+            if not np.any(mask):
+                zero_masks.append(os.path.basename(imgname))
+
+        assert len(zero_masks) > 0
+        self.image_names = [img_name for img_name in self.image_names
+                            if os.path.basename(img_name) not in zero_masks]
 
     def __len__(self) -> int:
         return len(self.image_names)
