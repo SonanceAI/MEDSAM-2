@@ -12,6 +12,8 @@ import os
 import logging
 import logging.config
 from model import SAM2Model
+from lightning.pytorch.loggers import TensorBoardLogger
+import datetime
 
 # For ensuring reproducibility
 # torch.manual_seed(12)
@@ -154,9 +156,11 @@ def main(args):
     model_cfg, checkpoint_path = MODEL_CFGS[args.model_arch]
 
     model = SAM2Model(checkpoint_path=checkpoint_path,
-                      model_cfg=model_cfg)
-    model.freeze_all(freeze_mask_decoder=True,
-                     freeze_adapter=False)
+                      model_cfg=model_cfg,
+                      learning_rate=1e-5
+                      )
+    model.freeze_all(freeze_mask_decoder=False,
+                     freeze_adapter=True)
     train_dataset_list, val_dataset_list = load_datasets2(root_dir, model.predictor._transforms)
     train_dataset = ConcatDataset(train_dataset_list)
     val_dataset = ConcatDataset(val_dataset_list)
@@ -180,15 +184,23 @@ def main(args):
                                 collate_fn=collate_dict_SAM)
 
     checkpoint_callback = ModelCheckpoint(monitor='val/iou',
-                                          filename='sam2-{epoch:02d}-{val/loss:.2f}',
+                                          filename=model_cfg.split('.')[0]+'/sam2-{epoch:02d}-{val/iou:.2f}',
                                           dirpath='checkpoints',
+                                          auto_insert_metric_name=False,
                                           mode='max')
+    tlogger = TensorBoardLogger('lightning_logs/',
+                                name=model_cfg.split('.')[0])
 
     trainer = Trainer(max_epochs=args.epochs,
                       num_sanity_val_steps=0,
-                      accelerator='cuda',
+                      enable_model_summary=False,
+                      #   profiler='simple',
+                      accelerator='gpu',
+                      logger=tlogger,
                       precision="bf16-mixed",
                       callbacks=[checkpoint_callback, RichModelSummary()],
+                    #   limit_train_batches=50,  # For debugging
+                    #   limit_val_batches=50,
                       )
     trainer.validate(model, val_dataloader)
     trainer.fit(model,
