@@ -3,6 +3,8 @@ from sam2_modified import SAM2ImagePredictorTensor
 from sam2.build_sam import build_sam2
 import torch
 import logging
+from collections import defaultdict
+from torch.nn import BCEWithLogitsLoss
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -22,6 +24,9 @@ class SAM2Model(LightningModule):
         self.predictor = SAM2ImagePredictorTensor(sam2_model)
         # register self.predictor.model as a submodule
         self.add_module("sam2_model", self.predictor.model)
+        self.mask_criterion = BCEWithLogitsLoss(reduction='none')
+        self.train(True)
+        self.predictor.model.train(True)
 
     def freeze_all(self,
                    freeze_mask_decoder=True,
@@ -48,7 +53,7 @@ class SAM2Model(LightningModule):
                       masks,
                       boxes,
                       input_points,
-                      input_labels) -> tuple[float, float]:
+                      input_labels) -> dict[str, torch.Tensor]:
         """
         images.shape: (B, C, H, W)
         masks.shape: (B, N_i, H, W)
@@ -56,8 +61,7 @@ class SAM2Model(LightningModule):
         input_labels.shape: (B, 1, N_i)
         """
         self.predictor.set_image_batch(images)
-        losses = 0.0
-        ious = 0.0
+        metrics = defaultdict(float)
         k = 0
         for img_idx in range(len(images)):
             in_point = input_points[img_idx] if input_points is not None else None
@@ -100,11 +104,11 @@ class SAM2Model(LightningModule):
             prd_masks = self.predictor._transforms.postprocess_masks(low_res_masks, self.predictor._orig_hw[img_idx])
             # low_res_masks.shape: (N_i, 3, 256, 256). prd_scores.shape: (N_i, 3). prd_masks.shape: (N_i, H, W)
 
-            loss, iou = self.compute_losses(mask, prd_masks, prd_scores)
-            losses += loss
-            ious += iou
+            metrics_i = self.compute_losses(mask, prd_masks, prd_scores)
+            for key, value in metrics_i.items():
+                metrics[key] += value
             k += 1
-        return losses/k, ious/k
+        return {key: v/k for key, v in metrics.items()}
 
     def training_step(self, batch: dict, batch_idx):
         image = batch['image']
@@ -115,13 +119,16 @@ class SAM2Model(LightningModule):
 
         batch_size = len(image)
         # image.shape: (B, C, H, W)
-        loss, iou = self._forward_step(image,
-                                       masks=mask,
-                                       boxes=boxes,
-                                       input_points=input_point,
-                                       input_labels=input_label)
+        metrics_dict = self._forward_step(image,
+                                          masks=mask,
+                                          boxes=boxes,
+                                          input_points=input_point,
+                                          input_labels=input_label)
+        loss = metrics_dict['loss']
         self.log('train/loss', loss, prog_bar=True, on_epoch=True, batch_size=batch_size)
-        self.log('train/iou', iou, on_epoch=True, on_step=False, batch_size=batch_size)
+        for key, value in metrics_dict.items():
+            if key != 'loss':
+                self.log(f'train/{key}', value, on_epoch=True, on_step=False, batch_size=batch_size)
         return loss
 
     def validation_step(self, batch: dict, batch_idx):
@@ -133,19 +140,23 @@ class SAM2Model(LightningModule):
 
         batch_size = len(image)
         # image.shape: (B, C, H, W)
-        loss, iou = self._forward_step(image,
-                                       masks=mask,
-                                       boxes=boxes,
-                                       input_points=input_point,
-                                       input_labels=input_label)
+        metrics_dict = self._forward_step(image,
+                                          masks=mask,
+                                          boxes=boxes,
+                                          input_points=input_point,
+                                          input_labels=input_label)
+        loss = metrics_dict['loss']
         self.log('val/loss', loss, prog_bar=True, on_epoch=True, batch_size=batch_size)
-        self.log('val/iou', iou, prog_bar=True, on_epoch=True, on_step=False, batch_size=batch_size)
+        for key, value in metrics_dict.items():
+            if key != 'loss':
+                self.log(f'val/{key}', value, on_epoch=True, on_step=False, batch_size=batch_size)
 
     def configure_optimizers(self):
         adapter_params = [param for name, param in self.predictor.model.named_parameters() if 'adapter' in name]
 
         params_to_optim = [
-            # {'params': self.predictor.model.sam_mask_decoder.parameters(), 'lr': self.learning_rate/10, 'weight_decay': 0},
+            {'params': self.predictor.model.sam_mask_decoder.parameters(), 'lr': self.learning_rate /
+             10, 'weight_decay': 1e-4},
             {'params': adapter_params, 'lr': self.learning_rate, 'weight_decay': 1e-5}
         ]
         optimizer = torch.optim.AdamW(params_to_optim,
@@ -176,25 +187,23 @@ class SAM2Model(LightningModule):
 
         return loss, iou.mean()
 
-    def compute_losses(self, mask, prd_masks, prd_scores) -> tuple[torch.Tensor, torch.Tensor]:
-        # # Segmentation Loss caclulation
+    def compute_losses(self, mask, prd_masks, prd_scores) -> dict[str, torch.Tensor]:
+        # Segmentation Loss calculation
 
         gt_mask = mask.to(dtype=torch.float32)
-        prd_mask = torch.sigmoid(prd_masks)
         gt_mask_aug = gt_mask.unsqueeze(1).repeat(1, 3, 1, 1)
-        seg_loss_pointwise = (-gt_mask_aug * torch.log(prd_mask + 0.00001) - (1 - gt_mask_aug)
-                              * torch.log((1 - prd_mask) + 0.00001))
+        seg_loss_pointwise = self.mask_criterion(prd_masks, gt_mask_aug)
 
         seg_loss, min_idx = seg_loss_pointwise.mean((0, 2, 3)).min(0)
 
-        prd_mask = prd_mask[:, min_idx]
+        prd_masks = prd_masks[:, min_idx]
         prd_scores = prd_scores[:, min_idx]
 
         # Score loss calculation (intersection over union) IOU
-
-        inter = (gt_mask * (prd_mask > 0.5)).sum(1).sum(1)
-        iou = inter / (gt_mask.sum(1).sum(1) + (prd_mask > 0.5).sum(1).sum(1) - inter)
+        prd_01 = prd_masks > 0.0
+        inter = (gt_mask * prd_01).sum(1).sum(1)
+        iou = inter / (gt_mask.sum(1).sum(1) + prd_01.sum(1).sum(1) - inter)
         score_loss = torch.abs(prd_scores - iou).mean()
         loss = seg_loss+score_loss*0.05  # mix losses
 
-        return loss, iou.mean()
+        return {'loss': loss, 'seg_loss': seg_loss, 'score_loss': score_loss, 'iou': iou.mean()}
