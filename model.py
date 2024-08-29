@@ -9,6 +9,26 @@ from torch.nn import BCEWithLogitsLoss
 _LOGGER = logging.getLogger(__name__)
 
 
+class BCERegularizedLoss(BCEWithLogitsLoss):
+    """
+    from the paper "THE HIDDEN LABEL-MARGINAL BIASES OF SEGMENTATION LOSSES"
+    """
+
+    def __init__(self, reg_weight=0.5, **kwargs):
+        super().__init__(**kwargs)
+        self.reg_weight = reg_weight
+
+    def forward(self, input, target):
+        bce_loss = super().forward(input, target)
+        reg_loss = torch.abs(torch.sigmoid(input) - target)
+        if self.reduction == 'mean':
+            reg_loss = reg_loss.mean()
+        elif self.reduction == 'sum':
+            reg_loss = reg_loss.sum()
+
+        return bce_loss + reg_loss*self.reg_weight
+
+
 class SAM2Model(LightningModule):
     def __init__(self,
                  checkpoint_path: str = "sam2-checkpoints/sam2_hiera_small.pt",
@@ -24,7 +44,8 @@ class SAM2Model(LightningModule):
         self.predictor = SAM2ImagePredictorTensor(sam2_model)
         # register self.predictor.model as a submodule
         self.add_module("sam2_model", self.predictor.model)
-        self.mask_criterion = BCEWithLogitsLoss(reduction='none')
+        # self.mask_criterion = BCEWithLogitsLoss(reduction='none')
+        self.mask_criterion = BCERegularizedLoss(reduction='none', reg_weight=0.5)
         self.train(True)
         self.predictor.model.train(True)
 
@@ -155,12 +176,13 @@ class SAM2Model(LightningModule):
         adapter_params = [param for name, param in self.predictor.model.named_parameters() if 'adapter' in name]
 
         params_to_optim = [
-            {'params': self.predictor.model.sam_mask_decoder.parameters(), 'lr': self.learning_rate /
-             10, 'weight_decay': 1e-4},
-            {'params': adapter_params, 'lr': self.learning_rate, 'weight_decay': 1e-5}
+            {'params': self.predictor.model.sam_mask_decoder.parameters(),
+             'lr': self.learning_rate/10, 'weight_decay': 1e-5},
+            {'params': adapter_params,
+             'lr': self.learning_rate, 'weight_decay': 1e-5}
         ]
         optimizer = torch.optim.AdamW(params_to_optim,
-                                      lr=self.learning_rate/10,
+                                      lr=self.learning_rate,
                                       weight_decay=0)
         return optimizer
 
@@ -201,8 +223,8 @@ class SAM2Model(LightningModule):
 
         # Score loss calculation (intersection over union) IOU
         prd_01 = prd_masks > 0.0
-        inter = (gt_mask * prd_01).sum(1).sum(1)
-        iou = inter / (gt_mask.sum(1).sum(1) + prd_01.sum(1).sum(1) - inter)
+        inter = (gt_mask * prd_01).sum((1, 2))
+        iou = inter / (gt_mask.sum((1, 2)) + prd_01.sum((1, 2)) - inter)
         score_loss = torch.abs(prd_scores - iou).mean()
         loss = seg_loss+score_loss*0.05  # mix losses
 

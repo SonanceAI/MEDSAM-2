@@ -7,7 +7,9 @@ from lightning import Trainer
 import torch
 from torch.utils.data import DataLoader, ConcatDataset
 from datasets.sam_dataset import SAMDataset, collate_dict_SAM
-from datasets import CAMUS, USForKidney, BreastUS, USsimandsegmDataset, USnervesegDataset, USThyroidDataset, FHPSAOPDataset
+from datasets import (CAMUS, USForKidney, BreastUS, USsimandsegmDataset, USnervesegDataset,
+                      USThyroidDataset, FHPSAOPDataset, BUS_UC, BUS_UCLM, BUSCv, FetalAbnominal,
+                      BUSI_WHU)
 import os
 import logging
 import logging.config
@@ -88,6 +90,15 @@ def load_datasets(root_dir: str, transforms) -> tuple[list, list]:
                                        image_transform=transforms)
                             )
 
+    ### BUS_UC ###
+    busuc_dir = os.path.join(root_dir, 'BUS_UC')
+    train_dataset_list.append(SAMDataset(BUS_UC(busuc_dir, 'train'),
+                                         image_transform=transforms)
+                              )
+    val_dataset_list.append(SAMDataset(BUS_UC(busuc_dir, 'test'),
+                                       image_transform=transforms)
+                            )
+
     return train_dataset_list, val_dataset_list
 
 
@@ -140,6 +151,30 @@ def load_datasets2(root_dir: str, transforms) -> tuple[list, list]:
                                          image_transform=transforms)
                               )
 
+    ### BUSI_WHU ###
+    busi_whu_dir = os.path.join(root_dir, 'BUSI_WHU')
+    train_dataset_list.append(SAMDataset(BUSI_WHU(busi_whu_dir, 'all'),
+                                         image_transform=transforms)
+                              )
+
+    ### BUSCv ###
+    buscv_dir = os.path.join(root_dir, 'BUSC-vckdnhtw26.1')
+    train_dataset_list.append(SAMDataset(BUSCv(buscv_dir, 'all'),
+                                         image_transform=transforms)
+                              )
+
+    ### FetalAbnominal ###
+    fetalabnominal_dir = os.path.join(root_dir, 'Fetal_Abdominal')
+    train_dataset_list.append(SAMDataset(FetalAbnominal(fetalabnominal_dir, 'all'),
+                                         image_transform=transforms)
+                              )
+
+    ### BUS_UCLM ###
+    busuclm_dir = os.path.join(root_dir, 'BUS-UCLM')
+    train_dataset_list.append(SAMDataset(BUS_UCLM(busuclm_dir, 'all'),
+                                         image_transform=transforms)
+                              )
+
     return train_dataset_list, val_dataset_list
 
 
@@ -184,7 +219,8 @@ def main(args):
                                 collate_fn=collate_dict_SAM)
 
     checkpoint_callback = ModelCheckpoint(monitor='val/iou',
-                                          filename=model_cfg.split('.')[0]+'/sam2-{epoch:02d}-{val/iou:.2f}',
+                                          #   filename=model_cfg.split('.')[0]+'/sam2-{epoch:02d}-{val/iou:.2f}',
+                                          filename='testing',
                                           dirpath='checkpoints',
                                           auto_insert_metric_name=False,
                                           mode='max')
@@ -199,8 +235,8 @@ def main(args):
                       logger=tlogger,
                       precision="bf16-mixed",
                       callbacks=[checkpoint_callback, RichModelSummary()],
-                    #   limit_train_batches=50,  # For debugging
-                    #   limit_val_batches=50,
+                      #   limit_train_batches=50,  # For debugging
+                      #   limit_val_batches=50,
                       )
     trainer.validate(model, val_dataloader)
     trainer.fit(model,
