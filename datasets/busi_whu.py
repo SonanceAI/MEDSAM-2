@@ -5,31 +5,31 @@ import cv2
 from .sam_dataset import split_masks
 
 
-class BUSCv(Dataset):
+class BUSI_WHU(Dataset):
     def __init__(self, root_dir: str,
                  split: str = 'All') -> None:
         super().__init__()
-        self.root_dir = os.path.join(root_dir, 'BUSC_Dataset',  'Segmentation')
+        self.root_dir = os.path.join(root_dir,
+                                     'BUSI_WHU Breast Cancer Ultrasound Image  Dataset',
+                                     'BUSI_WHU')
 
-        if split.lower() not in ['all', 'train', 'test']:
-            raise ValueError(f"split must be one of ['all', 'train', 'test'], got {split}")
+        if split.lower() not in ['all', 'train', 'test', 'valid']:
+            raise ValueError(f"split must be one of ['all', 'train', 'test', 'valid'], got {split}")
 
-        self.image_names = [f'images/{fname}' for fname in os.listdir(f'{self.root_dir}/images')
-                            if fname.endswith('.png')]
+        image_names = {}
 
-        self.mask_names = [f'masks/{fname}' for fname in os.listdir(f'{self.root_dir}/masks')
-                           if fname.endswith('.png')]
+        for spl_folder in ['train', 'test', 'valid']:
+            imnames = [f'{spl_folder}/img/{fname}' for fname in os.listdir(f'{self.root_dir}/{spl_folder}/img')
+                       if fname.endswith('.png')]
+            image_names[spl_folder] = imnames
 
-        # sort the patients directories
-        self.image_names.sort()
-        self.mask_names.sort()
-        idx_split = len(self.image_names) * 4 // 5
-        if split.lower() == 'train':
-            self.image_names = self.image_names[:idx_split]
-            self.mask_names = self.mask_names[:idx_split]
-        elif split.lower() == 'test':
-            self.image_names = self.image_names[idx_split:]
-            self.mask_names = self.mask_names[idx_split:]
+        if split.lower() == 'all':
+            self.image_names = image_names['train'] + image_names['test'] + image_names['valid']
+        else:
+            self.image_names = image_names[split.lower()]
+
+        self.mask_names = [imgname.replace('/img/', '/gt/').replace('.bmp', '_anno.bmp')
+                           for imgname in self.image_names]
 
         assert len(self.image_names) == len(self.mask_names)
 

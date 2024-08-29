@@ -6,3 +6,8 @@ from .ussimandsegm import USsimandsegmDataset
 from .usnerveseg import USnervesegDataset
 from .usthyroid import USThyroidDataset
 from .fhpsaop import FHPSAOPDataset
+from .busi_whu import BUSI_WHU
+from .busc_vckdnhtw import BUSCv
+from .fetal_abnominal import FetalAbnominal
+from .bus_UCLM import BUS_UCLM
+from .bus_uc_3ksd7w7jkx import BUS_UC

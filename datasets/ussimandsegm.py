@@ -38,7 +38,7 @@ class USsimandsegmDataset(Dataset):
         for imgname in self.image_names:
             mask = cv2.imread(os.path.join(self.masks_dir, imgname),
                               cv2.IMREAD_GRAYSCALE)
-            if not np.any(mask):
+            if not np.any(mask>30):
                 zero_masks.append(os.path.basename(imgname))
 
         assert len(zero_masks) > 0

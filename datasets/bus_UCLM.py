@@ -17,10 +17,10 @@ class BUS_UCLM(Dataset):
         if split.lower() not in ['all', 'train', 'test']:
             raise ValueError(f"split must be one of ['all', 'train', 'test'], got {split}")
 
-        self.image_names = [f'images/{fname}' for fname in os.listdir(f'{root_dir}/images')
+        self.image_names = [f'images/{fname}' for fname in os.listdir(f'{self.root_dir}/images')
                             if fname.endswith('.png')]
 
-        self.mask_names = [f'masks/{fname}' for fname in os.listdir(f'{root_dir}/masks')
+        self.mask_names = [f'masks/{fname}' for fname in os.listdir(f'{self.root_dir}/masks')
                            if fname.endswith('.png')]
 
         # sort the patients directories
@@ -45,6 +45,8 @@ class BUS_UCLM(Dataset):
             mask = cv2.imread(f'{self.root_dir}/{mask_name}', cv2.IMREAD_GRAYSCALE)
             if not np.any(mask):
                 zero_masks.append(os.path.basename(mask_name))
+
+        assert len(zero_masks) > 0
 
         self.image_names = [img_name for img_name in self.image_names
                             if os.path.basename(img_name) not in zero_masks]

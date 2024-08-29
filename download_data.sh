@@ -39,3 +39,9 @@ unzip -d $OUTPATH/BUS_UC /tmp/BUS_UC.zip && rm /tmp/BUS_UC.zip
 # Fetal_Abdominal https://data.mendeley.com/datasets/4gcpm9dsc3/1
 wget -O /tmp/Fetal_Abdominal.zip https://prod-dcd-datasets-cache-zipfiles.s3.eu-west-1.amazonaws.com/4gcpm9dsc3-1.zip
 unzip -d $OUTPATH/Fetal_Abdominal /tmp/Fetal_Abdominal.zip && rm /tmp/Fetal_Abdominal.zip # TODO: extract the zip inside the zip
+
+# BUSI_WHU (https://data.mendeley.com/datasets/k6cpmwybk3/1)
+wget -O /tmp/BUSI_WHU https://prod-dcd-datasets-cache-zipfiles.s3.eu-west-1.amazonaws.com/k6cpmwybk3-1.zip
+unzip -d $OUTPATH/BUSI_WHU /tmp/BUSI_WHU && rm /tmp/BUSI_WHU # TODO: extract the rar inside the zip
+mv "$OUTPATH/BUSI_WHU/BUSI_WHU Breast Cancer Ultrasound Image  Dataset/BUSI_WHU/train/img/ori/"*.bmp "$OUTPATH/BUSI_WHU/BUSI_WHU Breast Cancer Ultrasound Image  Dataset/BUSI_WHU/train/img/."
+mv "$OUTPATH/BUSI_WHU/BUSI_WHU Breast Cancer Ultrasound Image  Dataset/BUSI_WHU/train/gt/ori/"*.bmp "$OUTPATH/BUSI_WHU/BUSI_WHU Breast Cancer Ultrasound Image  Dataset/BUSI_WHU/train/gt/."
