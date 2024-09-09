@@ -147,7 +147,7 @@ def load_datasets2(root_dir: str, transforms) -> tuple[list, list]:
 
     ### FHPSAOPDataset ###
     fhpsaop_dir = os.path.join(root_dir, 'FH-PS-AOP')
-    train_dataset_list.append(SAMDataset(FHPSAOPDataset(fhpsaop_dir, 'train'),
+    train_dataset_list.append(SAMDataset(FHPSAOPDataset(fhpsaop_dir, 'all'),
                                          image_transform=transforms)
                               )
 
@@ -182,6 +182,9 @@ def main(args):
     MODEL_CFGS = {
         'small': ('sam2_hiera_s.yaml', 'sam2-checkpoints/sam2_hiera_small.pt'),
         'large': ('sam2_hiera_l.yaml', 'sam2-checkpoints/sam2_hiera_large.pt'),
+        'small-adapter': ('sam2_hiera_s_adapted.yaml', 'sam2-checkpoints/sam2_hiera_small.pt'),
+        'large-adapter': ('sam2_hiera_l_adapted.yaml', 'sam2-checkpoints/sam2_hiera_large.pt')
+        # 'large-adapter-trained': ('sam2_hiera_l_adapted.yaml', '../segment-anything-2/checkpoints/fine-tuned/large-US-lr=4e-5.pt')
     }
 
     torch.set_float32_matmul_precision('high')
@@ -192,7 +195,7 @@ def main(args):
 
     model = SAM2Model(checkpoint_path=checkpoint_path,
                       model_cfg=model_cfg,
-                      learning_rate=1e-5
+                      learning_rate=args.learning_rate,
                       )
     model.freeze_all(freeze_mask_decoder=False,
                      freeze_adapter=True)
@@ -235,14 +238,14 @@ def main(args):
                       logger=tlogger,
                       precision="bf16-mixed",
                       callbacks=[checkpoint_callback, RichModelSummary()],
-                      #   limit_train_batches=50,  # For debugging
-                      #   limit_val_batches=50,
+                      limit_train_batches=50,  # For debugging
+                      #limit_val_batches=50,
                       )
-    trainer.validate(model, val_dataloader)
-    trainer.fit(model,
-                train_dataloaders=train_dataloader,
-                val_dataloaders=val_dataloader
-                )
+    trainer.validate(model, train_dataloader)
+    #trainer.fit(model,
+    #            train_dataloaders=train_dataloader,
+    #            val_dataloaders=val_dataloader
+    #            )
 
 
 # Main script
@@ -255,7 +258,9 @@ if __name__ == "__main__":
     argparse.add_argument("--batch_size", type=int, default=8)
     argparse.add_argument("--epochs", type=int, default=30)
     argparse.add_argument("--num_workers", type=int, default=8)
-    argparse.add_argument("--model_arch", type=str, default='small', choices=['small', 'large'])
+    argparse.add_argument("--model_arch", type=str, default='small', 
+                          choices=['small', 'large', 'small-adapter', 'large-adapter'])
+    argparse.add_argument("--learning_rate", type=float, default=2e-6)
 
     args = argparse.parse_args()
 

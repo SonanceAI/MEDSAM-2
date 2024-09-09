@@ -10,27 +10,44 @@ _LOGGER = logging.getLogger(__name__)
 
 
 def generate_random_points(masks: torch.Tensor,
-                           num_points: int = 1) -> tuple[torch.Tensor, torch.Tensor]:
+                            num_pos_points: int = 1,
+                            num_neg_points: int = 0) -> tuple[torch.Tensor, torch.Tensor]:
     if len(masks) == 0:
         masks = torch.zeros(size=(0,))
-        points = torch.zeros(size=(0,))
+        points_pos = torch.zeros(size=(0,))
+        points_neg = torch.zeros(size=(0,))
     else:
-        points = []
+        points_pos = []
         for mask in masks:
             coords = torch.argwhere(mask > 0)
             if len(coords) == 0:
                 continue
-            ps = []
-            for i in range(num_points):
-                yx = coords[np.random.randint(len(coords))]
-                ps.append([yx[1], yx[0]])
-            points.append(ps)
-        points = torch.tensor(points)
+            # choose num_pos_points random points from coords
+            idx = np.random.choice(len(coords), num_pos_points, replace=False)
+            points_pos.append(coords[idx])
+        points_pos = torch.stack(points_pos)
 
-    if len(points) == 0:
-        return points, torch.zeros((0,))
+        if num_neg_points > 0:
+            points_neg = []
+            for mask in masks:
+                coords = torch.argwhere(mask == 0)
+                if len(coords) == 0:
+                    continue
+                # choose num_pos_points random points from coords
+                idx = np.random.choice(len(coords), num_neg_points, replace=False)
+                points_neg.append(coords[idx])
+            points_neg = torch.stack(points_neg)
+        else:
+            points_neg = torch.zeros(size=(len(masks),0,2), dtype=torch.int)
 
-    return points, torch.ones((len(points), len(points[0])))
+    points = torch.cat((points_pos, points_neg), dim=1)
+    # swap the values of the last columns
+    x = points[:, :, 0].clone()
+    points[:, :, 0] = points[:, :, 1]
+    points[:, :, 1] = x
+    labels = torch.ones((len(points_pos), num_pos_points+num_neg_points), dtype=torch.int)
+    labels[:, num_pos_points:] = 0
+    return points, labels
 
 
 def generate_box(masks: torch.Tensor) -> torch.Tensor:
@@ -99,6 +116,7 @@ class SAMDataset(Dataset):
     def __getitem__(self, index) -> dict[str, Any]:
         data: dict = self.dataset[index]
         masks = data['masks']
+
         if masks.shape[0] != 0:
             masks = self.mask_transform(masks)
             masks = masks[masks.sum((1, 2)) > 0]
@@ -107,18 +125,28 @@ class SAMDataset(Dataset):
             _LOGGER.warning(f"Too many masks: {len(masks)}! Check the dataset.")
 
         img = data['image']
+        if np.random.randint(2) == 1:
+            # rotate 90 degrees
+            masks = masks.permute(0, 2, 1)
+            img = img.permute(0, 2, 1)
+
+        if np.random.randint(2) == 1:
+            # flip horizontally
+            masks = masks.flip(-1)
+            img = img.flip(-1)
+        
 
         # min-max normalization
         if torch.is_tensor(img):
             img = img.to(dtype=torch.float32)
-            img = (img - img.min()) / (img.max() - img.min())
         else:
             img = img.astype(np.float32)
-            img = (img - img.min()) / (img.max() - img.min())
+        img = (img - img.min()) / (img.max() - img.min())
 
         boxes = None
         points_coords, points_labels = generate_random_points(masks,
-                                                              num_points=np.random.randint(1, 4)  # 1 to 3 points
+                                                              num_pos_points=np.random.randint(1, 4),  # 1 to 3 points
+                                                              num_neg_points=np.random.randint(0, 3)  # 0 to 2 points
                                                               )
         data['points_coords'] = points_coords
         data['points_labels'] = points_labels
