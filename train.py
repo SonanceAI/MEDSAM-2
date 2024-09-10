@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader, ConcatDataset
 from datasets.sam_dataset import SAMDataset, collate_dict_SAM
 from datasets import (CAMUS, USForKidney, BreastUS, USsimandsegmDataset, USnervesegDataset,
                       USThyroidDataset, FHPSAOPDataset, BUS_UC, BUS_UCLM, BUSCv, FetalAbnominal,
-                      BUSI_WHU)
+                      BUSI_WHU, RotatorCuffDataset)
 import os
 import logging
 import logging.config
@@ -141,9 +141,9 @@ def load_datasets2(root_dir: str, transforms) -> tuple[list, list]:
 
     ### USThyroidDataset ###
     usthyroid_dir = os.path.join(root_dir, 'Thyroid Dataset')
-    val_dataset_list.append(SAMDataset(USThyroidDataset(usthyroid_dir, 'all'),
-                                       image_transform=transforms)
-                            )
+    train_dataset_list.append(SAMDataset(USThyroidDataset(usthyroid_dir, 'all'),
+                                         image_transform=transforms)
+                              )
 
     ### FHPSAOPDataset ###
     fhpsaop_dir = os.path.join(root_dir, 'FH-PS-AOP')
@@ -175,6 +175,15 @@ def load_datasets2(root_dir: str, transforms) -> tuple[list, list]:
                                          image_transform=transforms)
                               )
 
+    ### RotatorCuffDataset ###
+    rotatorcuff_dir = os.path.join(root_dir.replace('raw', 'processed'), 'CLEAN_RotatorCuff_DICOMs')
+    train_dataset_list.append(SAMDataset(RotatorCuffDataset(rotatorcuff_dir, 'train'),
+                                         image_transform=transforms)
+                              )
+    val_dataset_list.append(SAMDataset(RotatorCuffDataset(rotatorcuff_dir, 'test'),
+                                       image_transform=transforms)
+                            )
+
     return train_dataset_list, val_dataset_list
 
 
@@ -184,7 +193,6 @@ def main(args):
         'large': ('sam2_hiera_l.yaml', 'sam2-checkpoints/sam2_hiera_large.pt'),
         'small-adapter': ('sam2_hiera_s_adapted.yaml', 'sam2-checkpoints/sam2_hiera_small.pt'),
         'large-adapter': ('sam2_hiera_l_adapted.yaml', 'sam2-checkpoints/sam2_hiera_large.pt')
-        # 'large-adapter-trained': ('sam2_hiera_l_adapted.yaml', '../segment-anything-2/checkpoints/fine-tuned/large-US-lr=4e-5.pt')
     }
 
     torch.set_float32_matmul_precision('high')
@@ -238,14 +246,14 @@ def main(args):
                       logger=tlogger,
                       precision="bf16-mixed",
                       callbacks=[checkpoint_callback, RichModelSummary()],
-                      limit_train_batches=50,  # For debugging
-                      #limit_val_batches=50,
+                      #   limit_train_batches=50,  # For debugging
+                      #   limit_val_batches=50,
                       )
-    trainer.validate(model, train_dataloader)
-    #trainer.fit(model,
-    #            train_dataloaders=train_dataloader,
-    #            val_dataloaders=val_dataloader
-    #            )
+    trainer.validate(model, val_dataloader)
+    trainer.fit(model,
+                train_dataloaders=train_dataloader,
+                val_dataloaders=val_dataloader
+                )
 
 
 # Main script
@@ -258,7 +266,7 @@ if __name__ == "__main__":
     argparse.add_argument("--batch_size", type=int, default=8)
     argparse.add_argument("--epochs", type=int, default=30)
     argparse.add_argument("--num_workers", type=int, default=8)
-    argparse.add_argument("--model_arch", type=str, default='small', 
+    argparse.add_argument("--model_arch", type=str, default='small',
                           choices=['small', 'large', 'small-adapter', 'large-adapter'])
     argparse.add_argument("--learning_rate", type=float, default=2e-6)
 

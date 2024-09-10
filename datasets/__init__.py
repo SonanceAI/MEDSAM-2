@@ -11,3 +11,4 @@ from .busc_vckdnhtw import BUSCv
 from .fetal_abnominal import FetalAbnominal
 from .bus_UCLM import BUS_UCLM
 from .bus_uc_3ksd7w7jkx import BUS_UC
+from .rotator_cuff import RotatorCuffDataset
