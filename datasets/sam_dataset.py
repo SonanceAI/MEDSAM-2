@@ -22,6 +22,7 @@ def generate_random_points(masks: torch.Tensor,
             coords = torch.argwhere(mask > 0)
             if len(coords) == 0:
                 continue
+            num_pos_points = min(num_pos_points, len(coords))
             # choose num_pos_points random points from coords
             idx = np.random.choice(len(coords), num_pos_points, replace=False)
             points_pos.append(coords[idx])
@@ -121,7 +122,7 @@ class SAMDataset(Dataset):
             masks = self.mask_transform(masks)
             masks = masks[masks.sum((1, 2)) > 0]
 
-        if len(masks) > 80:
+        if len(masks) > 60:
             _LOGGER.warning(f"Too many masks: {len(masks)}! Check the dataset.")
 
         img = data['image']
@@ -141,13 +142,18 @@ class SAMDataset(Dataset):
             img = img.to(dtype=torch.float32)
         else:
             img = img.astype(np.float32)
-        img = (img - img.min()) / (img.max() - img.min())
+        mn = img.min()
+        img = (img - mn) / (img.max() - mn)
 
         boxes = None
-        points_coords, points_labels = generate_random_points(masks,
-                                                              num_pos_points=np.random.randint(1, 4),  # 1 to 3 points
-                                                              num_neg_points=np.random.randint(0, 3)  # 0 to 2 points
-                                                              )
+        try:
+            points_coords, points_labels = generate_random_points(masks,
+                                                                num_pos_points=np.random.randint(1, 4),  # 1 to 3 points
+                                                                num_neg_points=np.random.randint(0, 3)  # 0 to 2 points
+                                                                )
+        except Exception as e:
+            _LOGGER.error(f"Error in generate_random_points [{data['image_name']}]: {e}")
+            raise e 
         data['points_coords'] = points_coords
         data['points_labels'] = points_labels
         data['boxes'] = boxes

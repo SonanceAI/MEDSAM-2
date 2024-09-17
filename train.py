@@ -115,19 +115,19 @@ def load_datasets2(root_dir: str, transforms) -> tuple[list, list]:
                                          image_transform=transforms)
                               )
 
-    ### ct2usforkidneyseg ###
+    ## ct2usforkidneyseg ###
     usforkidney_dir = os.path.join(root_dir, 'ct2usforkidneyseg')
     train_dataset_list.append(SAMDataset(USForKidney(usforkidney_dir, 'all'),
                                          image_transform=transforms)
                               )
 
-    ### BreastUS ###
+    ## BreastUS ###
     breastus_dir = os.path.join(root_dir, 'breast-ultrasound-images-dataset')
     train_dataset_list.append(SAMDataset(BreastUS(breastus_dir, 'all'),
                                          image_transform=transforms)
                               )
 
-    ### USsimandsegm ###
+    ## USsimandsegm ###
     ussimandsegm_dir = os.path.join(root_dir, 'ussimandsegm')
     train_dataset_list.append(SAMDataset(USsimandsegmDataset(ussimandsegm_dir, 'all'),
                                          image_transform=transforms)
@@ -141,9 +141,9 @@ def load_datasets2(root_dir: str, transforms) -> tuple[list, list]:
 
     ### USThyroidDataset ###
     usthyroid_dir = os.path.join(root_dir, 'Thyroid Dataset')
-    train_dataset_list.append(SAMDataset(USThyroidDataset(usthyroid_dir, 'all'),
-                                         image_transform=transforms)
-                              )
+    val_dataset_list.append(SAMDataset(USThyroidDataset(usthyroid_dir, 'all'),
+                                       image_transform=transforms)
+                            )
 
     ### FHPSAOPDataset ###
     fhpsaop_dir = os.path.join(root_dir, 'FH-PS-AOP')
@@ -205,8 +205,8 @@ def main(args):
                       model_cfg=model_cfg,
                       learning_rate=args.learning_rate,
                       )
-    model.freeze_all(freeze_mask_decoder=False,
-                     freeze_adapter=True)
+    model.freeze_all(freeze_mask_decoder=True,
+                     freeze_adapter=False)
     train_dataset_list, val_dataset_list = load_datasets2(root_dir, model.predictor._transforms)
     train_dataset = ConcatDataset(train_dataset_list)
     val_dataset = ConcatDataset(val_dataset_list)
@@ -229,9 +229,12 @@ def main(args):
                                 persistent_workers=args.num_workers != 0,
                                 collate_fn=collate_dict_SAM)
 
+    fileout = model_cfg.split('.')[0]
+    fileout += f'/{datetime.datetime.now().strftime("%Y-%m-%d")}'
+    fileout += '/sam2-{epoch:02d}-{val/iou:.2f}'
     checkpoint_callback = ModelCheckpoint(monitor='val/iou',
-                                          #   filename=model_cfg.split('.')[0]+'/sam2-{epoch:02d}-{val/iou:.2f}',
-                                          filename='testing',
+                                          filename=fileout,
+                                          #   filename='testing',
                                           dirpath='checkpoints',
                                           auto_insert_metric_name=False,
                                           mode='max')

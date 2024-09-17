@@ -57,4 +57,4 @@ class RotatorCuffDataset(Dataset):
 
         return {'image': img,
                 'masks': gt_frame,
-                'imgname': imgname}
+                'image_name': imgname}

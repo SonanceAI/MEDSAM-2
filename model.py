@@ -5,6 +5,7 @@ import torch
 import logging
 from collections import defaultdict
 from torch.nn import BCEWithLogitsLoss
+from torch.optim.lr_scheduler import StepLR
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -44,7 +45,6 @@ class SAM2Model(LightningModule):
         self.predictor = SAM2ImagePredictorTensor(sam2_model)
         # register self.predictor.model as a submodule
         self.add_module("sam2_model", self.predictor.model)
-        # self.mask_criterion = BCEWithLogitsLoss(reduction='none')
         self.mask_criterion = BCERegularizedLoss(reduction='none', reg_weight=0.5)
         self.train(True)
         self.predictor.model.train(True)
@@ -184,7 +184,8 @@ class SAM2Model(LightningModule):
         optimizer = torch.optim.AdamW(params_to_optim,
                                       lr=self.learning_rate,
                                       weight_decay=0)
-        return optimizer
+        scheduler = StepLR(optimizer, step_size=5, gamma=0.5)
+        return [optimizer], [scheduler]
 
     def compute_losses_old(self, mask, prd_masks, prd_scores) -> tuple[torch.Tensor, torch.Tensor]:
         # Segmentation Loss caclulation

@@ -38,7 +38,7 @@ class USsimandsegmDataset(Dataset):
         for imgname in self.image_names:
             mask = cv2.imread(os.path.join(self.masks_dir, imgname),
                               cv2.IMREAD_GRAYSCALE)
-            if not np.any(mask>30):
+            if not (mask > 30).any():
                 zero_masks.append(os.path.basename(imgname))
 
         assert len(zero_masks) > 0
@@ -53,6 +53,7 @@ class USsimandsegmDataset(Dataset):
         img = cv2.imread(os.path.join(self.images_dir, imgname))
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         gt_frame = cv2.imread(os.path.join(self.masks_dir, imgname))
+                              
 
         img = torch.tensor(img, dtype=torch.float32).permute(2, 0, 1)
         gt_frame = torch.tensor(gt_frame, dtype=torch.uint8)
@@ -61,4 +62,5 @@ class USsimandsegmDataset(Dataset):
         gt_frame = split_masks(gt_frame, black_color=30)
 
         return {'image': img,
-                'masks': gt_frame}
+                'masks': gt_frame,
+                'image_name': imgname}
