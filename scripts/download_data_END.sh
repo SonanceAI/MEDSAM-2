@@ -35,3 +35,7 @@ unzip -d $OUTPATH_COL/BKAI-IGH /tmp/bkai-igh-neopolyp.zip && rm /tmp/bkai-igh-ne
 ### Data that needs login ###
 # https://www.synapse.org/Synapse:syn45200214 # PolypGen2021_MultiCenterData_v3
 # https://github.com/dashishi/LDPolypVideo-Benchmark?tab=readme-ov-file
+
+
+# https://www.nature.com/articles/s41597-024-03359-0#ref-CR21: This dataset has 2.7M video frames, but only has bounding boxes. 
+# We might want to use it somehow for segmentation, but it will need some work to get the segmentation masks or some adaptation.

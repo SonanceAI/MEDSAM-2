@@ -4,6 +4,7 @@ import os
 from ..sam_dataset import split_masks
 from ..dataset_utils import listdir
 import cv2
+import json
 
 
 class PolypGen2021Dataset(Dataset):
@@ -32,6 +33,12 @@ class PolypGen2021Dataset(Dataset):
             assert len(images_names_i) > 0
             self.images_path.extend(images_names_i)
 
+        # remove empty masks
+        with open(os.path.join(os.path.dirname(os.path.realpath(__file__)), 'empty_masks.json'), 'r') as f:
+            empty_masks_names = json.load(f)['polypgen2021']
+        self.images_path = [img_path for img_path in self.images_path
+                            if os.path.basename(img_path) not in empty_masks_names]
+
         # sort the patients directories
         self.images_path.sort()
         idx_split = len(self.images_path) * 4 // 5
@@ -50,7 +57,6 @@ class PolypGen2021Dataset(Dataset):
 
         mask_path = img_path.replace('/images_seq', '/masks_seq').replace('/images_C', '/masks_C')
         mask_path = mask_path.replace('.jpg', '_mask.jpg')
-
         gt_frame = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
 
         img = torch.tensor(img, dtype=torch.float32).permute(2, 0, 1)

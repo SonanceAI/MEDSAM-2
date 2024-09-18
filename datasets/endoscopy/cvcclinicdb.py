@@ -41,8 +41,8 @@ class CVCclinicdbDataset(Dataset):
         img = torch.tensor(img, dtype=torch.float32).permute(2, 0, 1)
         gt_frame = (gt_frame > 127).astype(np.uint8)
         # TODO: pre-compute connectedComponents and save it somewhere
-        _, gt_frame = cv2.connectedComponents(gt_frame.astype(np.uint8))
-        gt_frame = torch.from_numpy(gt_frame)
+        _, gt_frame = cv2.connectedComponents(gt_frame)
+        gt_frame = torch.from_numpy(gt_frame.astype(np.uint8))
 
         # for each unique value in the mask, create a new mask
         gt_frame = split_masks(gt_frame)

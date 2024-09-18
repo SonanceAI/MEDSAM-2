@@ -187,6 +187,30 @@ def load_datasets2(root_dir: str, transforms) -> tuple[list, list]:
     return train_dataset_list, val_dataset_list
 
 
+def load_colon_datasets(root_dir: str, transforms) -> tuple[list, list]:
+    from datasets.endoscopy import BKAI_IGH_Dataset, CVCclinicdbDataset, KvasirSEG, PolypGen2021Dataset
+    train_dataset_list = []
+    val_dataset_list = []
+
+    datasets_params = [
+        (BKAI_IGH_Dataset, 'BKAI-IGH', {}),
+        (CVCclinicdbDataset, 'cvcclinicdb', {}),
+        (KvasirSEG, 'kvasirseg', {}),
+        (PolypGen2021Dataset, 'PolypGen2021_MultiCenterData_v3', {})
+    ]
+
+    for dataset_cls, dataset_name, params in datasets_params:
+        dataset_dir = os.path.join(root_dir, dataset_name)
+        train_dataset_list.append(SAMDataset(dataset_cls(dataset_dir, 'train', **params),
+                                             image_transform=transforms)
+                                  )
+        val_dataset_list.append(SAMDataset(dataset_cls(dataset_dir, 'test', **params),
+                                           image_transform=transforms)
+                                )
+
+    return train_dataset_list, val_dataset_list
+
+
 def main(args):
     MODEL_CFGS = {
         'small': ('sam2_hiera_s.yaml', 'sam2-checkpoints/sam2_hiera_small.pt'),
@@ -205,9 +229,9 @@ def main(args):
                       model_cfg=model_cfg,
                       learning_rate=args.learning_rate,
                       )
-    model.freeze_all(freeze_mask_decoder=True,
+    model.freeze_all(freeze_mask_decoder=False,
                      freeze_adapter=False)
-    train_dataset_list, val_dataset_list = load_datasets2(root_dir, model.predictor._transforms)
+    train_dataset_list, val_dataset_list = load_colon_datasets(root_dir, model.predictor._transforms)
     train_dataset = ConcatDataset(train_dataset_list)
     val_dataset = ConcatDataset(val_dataset_list)
 
@@ -229,7 +253,13 @@ def main(args):
                                 persistent_workers=args.num_workers != 0,
                                 collate_fn=collate_dict_SAM)
 
-    fileout = model_cfg.split('.')[0]
+    fileout = ""
+    llog_name = ''
+    if args.project_name.strip() != '':
+        fileout += args.project_name+'/'
+        llog_name += args.project_name+'/'
+    llog_name += model_cfg.split('.')[0]
+    fileout += model_cfg.split('.')[0]
     fileout += f'/{datetime.datetime.now().strftime("%Y-%m-%d")}'
     fileout += '/sam2-{epoch:02d}-{val/iou:.2f}'
     checkpoint_callback = ModelCheckpoint(monitor='val/iou',
@@ -239,7 +269,9 @@ def main(args):
                                           auto_insert_metric_name=False,
                                           mode='max')
     tlogger = TensorBoardLogger('lightning_logs/',
-                                name=model_cfg.split('.')[0])
+                                name=llog_name)
+    # log hyperparameters
+    tlogger.log_hyperparams(args)
 
     trainer = Trainer(max_epochs=args.epochs,
                       num_sanity_val_steps=0,
@@ -253,10 +285,11 @@ def main(args):
                       #   limit_val_batches=50,
                       )
     trainer.validate(model, val_dataloader)
-    trainer.fit(model,
-                train_dataloaders=train_dataloader,
-                val_dataloaders=val_dataloader
-                )
+    if args.epochs > 0:
+        trainer.fit(model,
+                    train_dataloaders=train_dataloader,
+                    val_dataloaders=val_dataloader
+                    )
 
 
 # Main script
@@ -272,6 +305,7 @@ if __name__ == "__main__":
     argparse.add_argument("--model_arch", type=str, default='small',
                           choices=['small', 'large', 'small-adapter', 'large-adapter'])
     argparse.add_argument("--learning_rate", type=float, default=2e-6)
+    argparse.add_argument("--project-name", type=str, default='')
 
     args = argparse.parse_args()
 

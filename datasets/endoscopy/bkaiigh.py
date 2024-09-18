@@ -4,6 +4,7 @@ import os
 from ..sam_dataset import split_masks
 from ..dataset_utils import listdir
 import cv2
+import numpy as np
 
 
 class BKAI_IGH_Dataset(Dataset):
@@ -35,14 +36,28 @@ class BKAI_IGH_Dataset(Dataset):
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
         mask_path = os.path.join(self.root_dir, 'train_gt', 'train_gt', imgname)
-        gt_frame = cv2.imread(mask_path)
+        gt_frame = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
 
         img = torch.tensor(img, dtype=torch.float32).permute(2, 0, 1)
-        gt_frame = torch.tensor(gt_frame, dtype=torch.uint8)
-        gt_frame = (gt_frame > 170).to(torch.uint8)
+        gt_frame = (gt_frame > 64).astype(np.uint8)
+        # TODO: pre-compute connectedComponents and save it somewhere
+        _, gt_frame = cv2.connectedComponents(gt_frame)
+        gt_frame = torch.from_numpy(gt_frame.astype(np.uint8))
+        if gt_frame.sum() == 0:
+            raise ValueError(f"Empty mask for {imgname}")
+
+        # remove very small masks
+        # TODO: verificar se resize ta destruindo as mascaras
 
         # for each unique value in the mask, create a new mask
         gt_frame = split_masks(gt_frame)
+        to_preserve_idxs = []
+        for i in range(len(gt_frame)):
+            mask = gt_frame[i]
+            coords = torch.argwhere(mask > 0)
+            if len(coords) >= 8:
+                to_preserve_idxs.append(i)
+        gt_frame = gt_frame[to_preserve_idxs]
 
         return {'image': img,
                 'masks': gt_frame,

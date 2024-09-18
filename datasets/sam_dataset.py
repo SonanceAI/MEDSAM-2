@@ -10,8 +10,8 @@ _LOGGER = logging.getLogger(__name__)
 
 
 def generate_random_points(masks: torch.Tensor,
-                            num_pos_points: int = 1,
-                            num_neg_points: int = 0) -> tuple[torch.Tensor, torch.Tensor]:
+                           num_pos_points: int = 1,
+                           num_neg_points: int = 0) -> tuple[torch.Tensor, torch.Tensor]:
     if len(masks) == 0:
         masks = torch.zeros(size=(0,))
         points_pos = torch.zeros(size=(0,))
@@ -22,6 +22,9 @@ def generate_random_points(masks: torch.Tensor,
             coords = torch.argwhere(mask > 0)
             if len(coords) == 0:
                 continue
+            if len(coords) < 8:
+                _LOGGER.warning(f"Very few points in mask: {len(coords)}")
+                # raise Exception(f"Very few points in mask: {len(coords)}")
             num_pos_points = min(num_pos_points, len(coords))
             # choose num_pos_points random points from coords
             idx = np.random.choice(len(coords), num_pos_points, replace=False)
@@ -39,9 +42,10 @@ def generate_random_points(masks: torch.Tensor,
                 points_neg.append(coords[idx])
             points_neg = torch.stack(points_neg)
         else:
-            points_neg = torch.zeros(size=(len(masks),0,2), dtype=torch.int)
+            points_neg = torch.zeros(size=(len(masks), 0, 2), dtype=torch.int)
 
-    points = torch.cat((points_pos, points_neg), dim=1)
+    points = torch.cat((points_pos, points_neg), dim=1)  # shape: (#masks, num_pos_points+num_neg_points, 2)
+
     # swap the values of the last columns
     x = points[:, :, 0].clone()
     points[:, :, 0] = points[:, :, 1]
@@ -135,7 +139,6 @@ class SAMDataset(Dataset):
             # flip horizontally
             masks = masks.flip(-1)
             img = img.flip(-1)
-        
 
         # min-max normalization
         if torch.is_tensor(img):
@@ -148,12 +151,14 @@ class SAMDataset(Dataset):
         boxes = None
         try:
             points_coords, points_labels = generate_random_points(masks,
-                                                                num_pos_points=np.random.randint(1, 4),  # 1 to 3 points
-                                                                num_neg_points=np.random.randint(0, 3)  # 0 to 2 points
-                                                                )
+                                                                  num_pos_points=np.random.randint(
+                                                                      1, 4),  # 1 to 3 points
+                                                                  num_neg_points=np.random.randint(
+                                                                      0, 3)  # 0 to 2 points
+                                                                  )
         except Exception as e:
             _LOGGER.error(f"Error in generate_random_points [{data['image_name']}]: {e}")
-            raise e 
+            raise e
         data['points_coords'] = points_coords
         data['points_labels'] = points_labels
         data['boxes'] = boxes
