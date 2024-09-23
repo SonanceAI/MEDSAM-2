@@ -229,7 +229,7 @@ def main(args):
                       model_cfg=model_cfg,
                       learning_rate=args.learning_rate,
                       )
-    model.freeze_all(freeze_mask_decoder=False,
+    model.freeze_all(freeze_mask_decoder=args.freeze_mask_decoder,
                      freeze_adapter=False)
     train_dataset_list, val_dataset_list = load_colon_datasets(root_dir, model.predictor._transforms)
     train_dataset = ConcatDataset(train_dataset_list)
@@ -306,6 +306,8 @@ if __name__ == "__main__":
                           choices=['small', 'large', 'small-adapter', 'large-adapter'])
     argparse.add_argument("--learning_rate", type=float, default=2e-6)
     argparse.add_argument("--project-name", type=str, default='')
+    argparse.add_argument("--freeze_mask_decoder", action='store_true', 
+                          default=False)
 
     args = argparse.parse_args()
 
