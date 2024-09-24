@@ -63,6 +63,9 @@ class BUS_UCLM(Dataset):
 
         maskname = self.mask_names[index]
         gt_frame = cv2.imread(f'{self.root_dir}/{maskname}', cv2.IMREAD_GRAYSCALE)
+        gt_frame = (gt_frame > 127).astype(np.uint8)
+        # TODO: pre-compute connectedComponents and save it somewhere
+        _, gt_frame = cv2.connectedComponents(gt_frame)
 
         # (H, W, C) -> (C, H, W)
         img = torch.tensor(img, dtype=torch.float32).permute(2, 0, 1)
