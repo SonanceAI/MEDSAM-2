@@ -25,6 +25,14 @@ import datetime
 
 _LOGGER = logging.getLogger(__name__)
 
+MODEL_CFGS = {
+    'small': ('sam2_hiera_s.yaml', 'sam2-checkpoints/sam2_hiera_small.pt'),
+    'large': ('sam2_hiera_l.yaml', 'sam2-checkpoints/sam2_hiera_large.pt'),
+    'small-adapter': ('sam2_hiera_s_adapted.yaml', 'sam2-checkpoints/sam2_hiera_small.pt'),
+    'large-adapter': ('sam2_hiera_l_adapted.yaml', 'sam2-checkpoints/sam2_hiera_large.pt'),
+    'large-adapter-2': ('sam2_hiera_l_adapted_2.yaml', 'sam2-checkpoints/sam2_hiera_large.pt'),
+}
+
 
 def load_datasets(root_dir: str, transforms) -> tuple[list, list]:
     train_dataset_list = []
@@ -212,13 +220,6 @@ def load_colon_datasets(root_dir: str, transforms) -> tuple[list, list]:
 
 
 def main(args):
-    MODEL_CFGS = {
-        'small': ('sam2_hiera_s.yaml', 'sam2-checkpoints/sam2_hiera_small.pt'),
-        'large': ('sam2_hiera_l.yaml', 'sam2-checkpoints/sam2_hiera_large.pt'),
-        'small-adapter': ('sam2_hiera_s_adapted.yaml', 'sam2-checkpoints/sam2_hiera_small.pt'),
-        'large-adapter': ('sam2_hiera_l_adapted.yaml', 'sam2-checkpoints/sam2_hiera_large.pt')
-    }
-
     torch.set_float32_matmul_precision('high')
     root_dir = args.root_dir
     batch_size = args.batch_size
@@ -303,7 +304,7 @@ if __name__ == "__main__":
     argparse.add_argument("--epochs", type=int, default=30)
     argparse.add_argument("--num_workers", type=int, default=8)
     argparse.add_argument("--model_arch", type=str, default='small',
-                          choices=['small', 'large', 'small-adapter', 'large-adapter'])
+                          choices=MODEL_CFGS.keys())
     argparse.add_argument("--learning_rate", type=float, default=2e-6)
     argparse.add_argument("--project-name", type=str, default='')
     argparse.add_argument("--freeze_mask_decoder", action='store_true', 

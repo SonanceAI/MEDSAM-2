@@ -152,9 +152,9 @@ class SAMDataset(Dataset):
         try:
             points_coords, points_labels = generate_random_points(masks,
                                                                   num_pos_points=np.random.randint(
-                                                                      1, 4),  # 1 to 3 points
+                                                                      1, 3),  # 1 to 2 points
                                                                   num_neg_points=np.random.randint(
-                                                                      0, 3)  # 0 to 2 points
+                                                                      0, 2)  # 0 to 1 points
                                                                   )
         except Exception as e:
             _LOGGER.error(f"Error in generate_random_points [{data['image_name']}]: {e}")

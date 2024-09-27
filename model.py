@@ -184,7 +184,7 @@ class SAM2Model(LightningModule):
         optimizer = torch.optim.AdamW(params_to_optim,
                                       lr=self.learning_rate,
                                       weight_decay=0)
-        scheduler = StepLR(optimizer, step_size=3, gamma=0.5)
+        scheduler = StepLR(optimizer, step_size=5, gamma=0.5)
         return [optimizer], [scheduler]
 
     def compute_losses_old(self, mask, prd_masks, prd_scores) -> tuple[torch.Tensor, torch.Tensor]:

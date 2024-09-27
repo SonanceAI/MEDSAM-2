@@ -34,15 +34,15 @@ class Adapter(nn.Module):
         return xs
 
 
-class Adaptered(nn.Module):
-    def __init__(self, orig_layer: nn.Module, input_dim: int):
-        super().__init__()
-        self.orig_layer = orig_layer
-        self.adapter = Adapter(input_dim)
+# class Adaptered(nn.Module):
+#     def __init__(self, orig_layer: nn.Module, input_dim: int):
+#         super().__init__()
+#         self.orig_layer = orig_layer
+#         self.adapter = Adapter(input_dim)
 
-    def forward(self, *x):
-        orig_out = self.orig_layer(*x)
-        return self.adapter(orig_out)
+#     def forward(self, *x):
+#         orig_out = self.orig_layer(*x)
+#         return self.adapter(orig_out)
 
 
 class MultiScaleBlock(MultiScaleBlockOriginal):
@@ -113,13 +113,14 @@ class Hiera(HieraOriginal):
             16,
             20,
         ),
-        return_interm_layers=True  # return feats from every stage
+        return_interm_layers=True,  # return feats from every stage
+        mlp_ratio=0.25,
     ):
         super().__init__(embed_dim=embed_dim, num_heads=num_heads, drop_path_rate=drop_path_rate, q_pool=q_pool,
                          q_stride=q_stride, stages=stages, dim_mul=dim_mul, head_mul=head_mul,
                          window_pos_embed_bkg_spatial_size=window_pos_embed_bkg_spatial_size, window_spec=window_spec,
                          global_att_blocks=global_att_blocks, return_interm_layers=return_interm_layers)
-        self.patch_adapter = Adapter(embed_dim)
+        self.patch_adapter = Adapter(embed_dim, mlp_ratio=mlp_ratio)
         # add adapters to blocks
         for i, blk in enumerate(self.blocks):
             if blk.window_size == 0:
