@@ -46,9 +46,9 @@ class Adapter(nn.Module):
 
 
 class MultiScaleBlock(MultiScaleBlockOriginal):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, mlp_ratio=0.25, **kwargs):
         super().__init__(*args, **kwargs)
-        self.mlp_adapter = Adapter(self.dim_out, skip_connect=False)
+        self.mlp_adapter = Adapter(self.dim_out, skip_connect=False, mlp_ratio=mlp_ratio)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         shortcut = x  # B, H, W, C
