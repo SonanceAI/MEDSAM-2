@@ -130,6 +130,7 @@ class Hiera(HieraOriginal):
                     num_heads=blk.attn.num_heads,
                     q_stride=blk.q_stride,
                     window_size=blk.window_size,
+                    mlp_ratio=mlp_ratio,
                 )
                 self.blocks[i].drop_path = blk.drop_path
 
